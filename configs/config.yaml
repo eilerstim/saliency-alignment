@@ -1,0 +1,14 @@
+defaults:
+  - model: mamba2.8
+  - optim: adamw
+  - data: the_pile
+  - loss: default
+  - trainer
+  - _self_
+
+seed: 42
+checkpoint_every_n_epochs: 10
+
+wandb:
+  project: finetune-project
+  entity: your-wandb-entity

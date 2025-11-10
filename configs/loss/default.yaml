@@ -1,0 +1,2 @@
+_target_: finetune.criterion.AuxiliaryLoss
+weight: 0.1
