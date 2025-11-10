@@ -13,7 +13,15 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 logger = logging.getLogger(__name__)
 
 def _download_dataset(data_cfg: DictConfig):
-    """Download dataset if not already present."""
+    """Download and extract COCO dataset if not already present.
+    
+    Downloads training images, validation images, and annotations from COCO dataset URLs
+    specified in the configuration. Skips download if files already exist locally.
+    
+    Args:
+        data_cfg: Configuration containing data directory path and download URLs for
+            train images, validation images, and annotations.
+    """
     data_dir = Path(data_cfg.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -41,7 +49,31 @@ def _download_dataset(data_cfg: DictConfig):
                 zip_ref.extractall(data_dir)
     
 class COCOSegmentationDataset(Dataset):
+    """PyTorch Dataset for COCO segmentation with captions.
+    
+    Loads COCO images with corresponding segmentation masks and captions. Masks are
+    created by merging all object instances, with each pixel labeled by its category ID.
+    
+    Attributes:
+        data_cfg: Data configuration containing paths and settings.
+        split: Dataset split, either "train" or "validation".
+        root_dir: Path to the directory containing images.
+        coco: COCO API instance for segmentation annotations.
+        captions: COCO API instance for caption annotations.
+        ids: List of image IDs in the dataset.
+        transform: Optional transform to apply to images.
+        target_size: Target size (height, width) for resizing images and masks.
+    """
+    
     def __init__(self, data_cfg: DictConfig, split: Literal["train", "validation"], transform=None, target_size=(1024, 1024)):
+        """Initialize the COCO segmentation dataset.
+        
+        Args:
+            data_cfg: Configuration containing data directory and annotation file paths.
+            split: Dataset split to load, either "train" or "validation".
+            transform: Optional callable transform to apply to images. Defaults to None.
+            target_size: Tuple of (height, width) to resize images and masks. Defaults to (1024, 1024).
+        """
         self.data_cfg = data_cfg
         self.split = split
         
@@ -57,9 +89,28 @@ class COCOSegmentationDataset(Dataset):
         self.target_size = target_size
         
     def __len__(self):
+        """Return the total number of images in the dataset.
+        
+        Returns:
+            Number of images in the dataset.
+        """
         return len(self.ids)
     
     def __getitem__(self, idx):
+        """Load and return a single sample from the dataset.
+        
+        Loads an image, creates a merged segmentation mask with category IDs, and retrieves
+        all associated captions. Images and masks are resized to the target size.
+        
+        Args:
+            idx: Index of the sample to retrieve.
+            
+        Returns:
+            Tuple containing:
+                - image: RGB image tensor (or PIL Image if no transform).
+                - mask: Long tensor of shape (H, W) with category IDs for each pixel.
+                - caption_texts: List of caption strings for this image.
+        """
         img_id = self.ids[idx]
         img_info = self.coco.loadImgs(img_id)[0]
         image_path = self.root_dir / img_info['file_name']
@@ -90,9 +141,13 @@ class COCOSegmentationDataset(Dataset):
         
         # Convert mask to tensor
         mask = torch.from_numpy(mask).long()
-        
-        return image, mask, 
 
+        # Get all captions
+        captions_ids = self.captions.getAnnIds(imgIds=img_id)
+        captions_anns = self.captions.loadAnns(captions_ids)
+        caption_texts = [ann['caption'] for ann in captions_anns]
+        
+        return image, mask, caption_texts
 
 def save_data(
     data_cfg: DictConfig,
