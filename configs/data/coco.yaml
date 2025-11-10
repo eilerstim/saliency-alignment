@@ -1,0 +1,28 @@
+name: coco
+data_dir: ${oc.env:SCRATCH}/finetune/data/${name}
+
+train:
+  split: train
+  name: train2017
+  save_dir: ${data_dir}/train/
+  url: http://images.cocodataset.org/zips/train2017.zip
+
+validation:
+  split: validation
+  name: val2017
+  save_dir: ${data_dir}/validation/
+  url: http://images.cocodataset.org/zips/val2017.zip
+
+annotations:
+  name: annotations
+  save_dir: ${data_dir}/annotations
+  url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip 
+  ann_file: ${annotations.save_dir}/instances_{}.json
+  captions_file: ${annotations.save_dir}/captions_{}.json
+
+dataloader_kwargs:
+  num_workers: 4
+  batch_size: 8
+  persistent_workers: true            # keeps workers alive across iterations
+  prefetch_factor: 4                  # tune with your I/O
+  pin_memory: true                    # recommended for GPU training

@@ -1,5 +1,7 @@
 import itertools
 import logging
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Literal
 
@@ -9,6 +11,87 @@ from omegaconf import DictConfig
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
 logger = logging.getLogger(__name__)
+
+def _download_dataset(data_cfg: DictConfig):
+    """Download dataset if not already present."""
+    data_dir = Path(data_cfg.data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Prepare download URLs and names
+    downloads = [
+        (data_cfg.train.name, data_cfg.train.url),
+        (data_cfg.validation.name, data_cfg.validation.url),
+        (data_cfg.annotations.name, data_cfg.annotations.url),
+    ]
+    
+    # Download and extract data
+    for name, url in downloads:
+        zip_path = data_dir / f"{name}.zip"
+        
+        # Check if already downloaded
+        if not zip_path.exists():
+            print(f"Downloading {name}...")
+            urllib.request.urlretrieve(url, zip_path)
+            
+        # Extract archive
+        extract_dir = data_dir / name
+        if not extract_dir.exists():
+            print(f"Extracting {name}...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(data_dir)
+    
+class COCOSegmentationDataset(Dataset):
+    def __init__(self, data_cfg: DictConfig, split: Literal["train", "validation"], transform=None, target_size=(1024, 1024)):
+        self.data_cfg = data_cfg
+        self.split = split
+        
+        # Build paths based on split
+        ann_file = data_cfg.annotations.ann_file.format(data_cfg[split].name)
+        captions_file = data_cfg.annotations.captions_file.format(data_cfg[split].name)
+        
+        self.root_dir = Path(data_cfg.data_dir) / data_cfg[split].name
+        self.coco = COCO(ann_file)
+        self.captions = COCO(captions_file)
+        self.ids = list(self.coco.imgs.keys())
+        self.transform = transform
+        self.target_size = target_size
+        
+    def __len__(self):
+        return len(self.ids)
+    
+    def __getitem__(self, idx):
+        img_id = self.ids[idx]
+        img_info = self.coco.loadImgs(img_id)[0]
+        image_path = self.root_dir / img_info['file_name']
+        
+        # Load image
+        image = Image.open(image_path).convert('RGB')
+        
+        # Get segmentation mask for this image
+        ann_ids = self.coco.getAnnIds(imgIds=img_id)
+        anns = self.coco.loadAnns(ann_ids)
+        mask = np.zeros((img_info['height'], img_info['width']))
+        
+        # Merge all object masks
+        # Each object gets its own category id in the mask
+        for ann in anns:
+            if 'segmentation' in ann:
+                current_mask = self.coco.annToMask(ann)
+                mask = np.maximum(mask, current_mask * ann['category_id'])
+        
+        # Resize image and mask (to the same size)
+        image = image.resize(self.target_size, Image.BILINEAR)
+        mask = Image.fromarray(mask.astype(np.uint8)).resize(self.target_size, Image.NEAREST)
+        mask = np.array(mask)
+        
+        # Apply transform
+        if self.transform:
+            image = self.transform(image)
+        
+        # Convert mask to tensor
+        mask = torch.from_numpy(mask).long()
+        
+        return image, mask, 
 
 
 def save_data(
@@ -24,6 +107,7 @@ def save_data(
         tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
         split (Literal["train", "validation"]): Dataset split to process.
     """
+    _download_dataset(data_cfg)
     # Load dataset
     ds = datasets.load_dataset(data_cfg.name, split=data_cfg[split].split)
     logger.info(f"Loaded {split} split with {len(ds)} samples.")
