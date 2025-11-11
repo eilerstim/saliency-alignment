@@ -1,4 +1,5 @@
 import itertools
+import json
 import logging
 import urllib.request
 import zipfile
@@ -7,48 +8,19 @@ from typing import Literal
 
 import datasets
 import hydra
+import numpy as np
+import torch
 from omegaconf import DictConfig
+from PIL import Image
+from pycocotools.coco import COCO
+from torch.utils.data import Dataset
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
+from finetune.cli.download import download_coco, download_coconut
+
 logger = logging.getLogger(__name__)
-
-def _download_dataset(data_cfg: DictConfig):
-    """Download and extract COCO dataset if not already present.
     
-    Downloads training images, validation images, and annotations from COCO dataset URLs
-    specified in the configuration. Skips download if files already exist locally.
-    
-    Args:
-        data_cfg: Configuration containing data directory path and download URLs for
-            train images, validation images, and annotations.
-    """
-    data_dir = Path(data_cfg.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    # Prepare download URLs and names
-    downloads = [
-        (data_cfg.train.name, data_cfg.train.url),
-        (data_cfg.validation.name, data_cfg.validation.url),
-        (data_cfg.annotations.name, data_cfg.annotations.url),
-    ]
-    
-    # Download and extract data
-    for name, url in downloads:
-        zip_path = data_dir / f"{name}.zip"
-        
-        # Check if already downloaded
-        if not zip_path.exists():
-            print(f"Downloading {name}...")
-            urllib.request.urlretrieve(url, zip_path)
-            
-        # Extract archive
-        extract_dir = data_dir / name
-        if not extract_dir.exists():
-            print(f"Extracting {name}...")
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(data_dir)
-    
-class COCOSegmentationDataset(Dataset):
+class COCODataset(Dataset):
     """PyTorch Dataset for COCO segmentation with captions.
     
     Loads COCO images with corresponding segmentation masks and captions. Masks are
@@ -74,6 +46,8 @@ class COCOSegmentationDataset(Dataset):
             transform: Optional callable transform to apply to images. Defaults to None.
             target_size: Tuple of (height, width) to resize images and masks. Defaults to (1024, 1024).
         """
+        download_coco(data_cfg)
+
         self.data_cfg = data_cfg
         self.split = split
         
@@ -149,6 +123,119 @@ class COCOSegmentationDataset(Dataset):
         
         return image, mask, caption_texts
 
+class COCONutPanCapDataset(Dataset):
+    """PyTorch Dataset for COCONut panoptic segmentation with captions.
+    
+    Loads COCONut images with corresponding panoptic segmentation masks.
+    COCONut provides high-quality panoptic annotations from the COCO dataset.
+    
+    Attributes:
+        data_cfg: Data configuration containing paths and settings.
+        split: Dataset split, either "train" or "validation".
+        root_dir: Path to the directory containing images.
+        mask_dir: Path to the directory containing panoptic masks.
+        captions_dir: Path to the directory containing captions.
+        annotations: Dictionary containing parsed annotation data.
+        images: List of image information dictionaries.
+        img_id_to_info: Mapping from image ID to image information.
+        annotations_list: List of annotation dictionaries with segments_info.
+        file_name_to_annotation: Mapping from mask file name to segments_info.
+    """
+    
+    def __init__(self, data_cfg: DictConfig, split: Literal["train", "validation"]):
+        """Initialize the COCONut panoptic segmentation dataset.
+        
+        Args:
+            data_cfg: Configuration containing data directory and annotation file paths.
+            split: Dataset split to load, either "train" or "validation".
+        """
+        download_coco(data_cfg)
+        download_coconut(data_cfg)
+
+        self.data_cfg = data_cfg
+        self.split = split
+        
+        # Build paths - COCONut uses train2017 images from COCO
+        self.root_dir = Path(data_cfg.data_dir) / "train2017"
+        self.mask_dir = Path(data_cfg.coconut.masks_dir)
+        self.captions_dir = Path(data_cfg.coconut.captions_dir)
+        
+        # Load panoptic annotations from JSON file
+        ann_file = data_cfg.coconut.ann_file
+        with open(ann_file, 'r') as f:
+            self.annotations = json.load(f)
+        
+        # Extract image information
+        self.images = self.annotations['images']
+        self.img_id_to_info = {img['id']: img for img in self.images}
+        
+        # Create mapping from file_name to annotation (segments_info)
+        self.annotations_list = self.annotations['annotations']
+        self.file_name_to_annotation = {ann['file_name']: ann for ann in self.annotations_list}
+        
+        # Filter images to only those with captions available
+        # The length is determined by available caption files
+        caption_files = list(self.captions_dir.glob("*.txt"))
+        caption_basenames = {f.stem for f in caption_files}
+        
+        # Filter images to only include those with captions
+        self.images = [img for img in self.images if img['file_name'].split('.')[0] in caption_basenames]
+        
+    def __len__(self):
+        """Return the total number of images in the dataset.
+        
+        Returns:
+            Number of images with available captions.
+        """
+        return len(self.images)
+    
+    def __getitem__(self, idx):
+        """Load and return a single sample from the dataset.
+        
+        Loads an image, its panoptic segmentation mask, associated captions, and segment info.
+        
+        Args:
+            idx: Index of the sample to retrieve.
+            
+        Returns:
+            Tuple containing:
+                - image: RGB PIL Image.
+                - mask: Long tensor of shape (H, W) with panoptic segmentation IDs.
+                - caption_text: Caption string for this image.
+                - segments_info: List of tuples (id, category_id) for each segment in the mask.
+        """
+        img_info = self.images[idx]
+        image_path = self.root_dir / img_info['file_name']
+        
+        # Load image
+        image = Image.open(image_path).convert('RGB')
+        
+        # Load panoptic mask
+        # COCONut stores masks as PNG files with the same image ID
+        mask_filename = f"{img_info['file_name'].split('.')[0]}.png"
+        mask_path = self.mask_dir / mask_filename
+        mask = Image.open(mask_path)
+        mask = torch.from_numpy(np.array(mask)).long()
+        
+        # Load captions from TXT file
+        caption_filename = f"{img_info['file_name'].split('.')[0]}.txt"
+        caption_path = self.captions_dir / caption_filename
+        
+        with open(caption_path, 'r') as f:
+            caption_text = f.read().strip()
+        
+        # Get segments_info for this image
+        # The annotation file_name includes .png extension for panoptic masks
+        annotation_key = mask_filename
+        annotation = self.file_name_to_annotation.get(annotation_key, {})
+        
+        # Extract (id, category_id) tuples from segments_info
+        segments_info = []
+        if 'segments_info' in annotation:
+            segments_info = [(seg['id'], seg['category_id']) for seg in annotation['segments_info']]
+        
+        return image, mask, caption_text, segments_info
+
 def save_data(
     data_cfg: DictConfig,
     tokenizer: PreTrainedTokenizer,
@@ -162,7 +249,6 @@ def save_data(
         tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
         split (Literal["train", "validation"]): Dataset split to process.
     """
-    _download_dataset(data_cfg)
     # Load dataset
     ds = datasets.load_dataset(data_cfg.name, split=data_cfg[split].split)
     logger.info(f"Loaded {split} split with {len(ds)} samples.")

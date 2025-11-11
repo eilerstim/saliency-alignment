@@ -1,0 +1,154 @@
+import os
+import json
+import tarfile
+import urllib.request
+from pathlib import Path
+from datasets import load_dataset, Image
+import argparse
+from tqdm import tqdm
+import logging
+from omegaconf import DictConfig
+
+logger = logging.getLogger(__name__)
+
+COCONUT_SPLIT = "coconut_s"
+
+def download_coco(data_cfg: DictConfig):
+    """Download and extract COCO dataset if not already present.
+    
+    Downloads training images, validation images, and annotations from COCO dataset URLs
+    specified in the configuration. Skips download if files already exist locally.
+    
+    Args:
+        data_cfg: Configuration containing data directory path and download URLs for
+            train images, validation images, and annotations.
+    """
+    data_dir = Path(data_cfg.data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Prepare download URLs and names
+    downloads = [
+        (data_cfg.train.name, data_cfg.train.url),
+        (data_cfg.validation.name, data_cfg.validation.url),
+        (data_cfg.annotations.name, data_cfg.annotations.url),
+    ]
+    
+    # Download and extract data
+    for name, url in downloads:
+        zip_path = data_dir / f"{name}.zip"
+        
+        # Check if already extracted
+        extract_dir = data_dir / name
+        if extract_dir.exists():
+            logger.info(f"{name} already exists at {extract_dir}")
+            continue
+        
+        # Check if already downloaded
+        if not zip_path.exists():
+            logger.info(f"Downloading {name}...")
+            urllib.request.urlretrieve(url, zip_path)
+            
+        # Extract archive
+        logger.info(f"Extracting {name}...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(data_dir)
+        
+        logger.info(f"Successfully extracted {name}")
+    
+    logger.info("COCO dataset download and extraction complete")
+
+
+def download_coconut(data_cfg: DictConfig):
+    """Download COCONut dataset from HuggingFace.
+    
+    Args:
+        data_cfg: Data configuration containing paths and URLs for the dataset.
+        
+    Returns:
+        Path to the output directory containing the downloaded dataset.
+    """
+    # Check if files already exist
+    output_json_file = Path(data_cfg.coconut.ann_file)
+    output_mask_dir = Path(data_cfg.coconut.masks_dir)
+    output_captions_dir = Path(data_cfg.coconut.captions_dir)
+    
+    # Check if dataset is already downloaded
+    if (output_json_file.exists() and 
+        output_mask_dir.exists() and 
+        len(list(output_mask_dir.glob("*.png"))) > 0 and
+        output_captions_dir.exists() and
+        len(list(output_captions_dir.glob("*.txt"))) > 0):
+        logger.info(f"COCONut dataset already exists at {data_cfg.data_dir}")
+        return
+    
+    dataset_name = f"xdeng77/{COCONUT_SPLIT}"
+    logger.info(f"Downloading {COCONUT_SPLIT} from {dataset_name}...")
+    dataset = load_dataset(dataset_name)
+
+    # create output folder
+    output_path = Path(data_cfg.data_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    output_json_file = Path(data_cfg.coconut.ann_file)
+
+    # create output mask folder
+    output_mask_dir = Path(data_cfg.coconut.masks_dir)
+    output_mask_dir.mkdir(parents=True, exist_ok=True)
+
+    # collect items from huggingface dataset: annotations (segments_info) and image infos
+    output_annotations = []
+    output_img_infos = []
+
+    logger.info("Saving dataset to local path...")
+    for item in tqdm(dataset["train"], desc=f"Processing {COCONUT_SPLIT}"):
+
+        anno_info = item["segments_info"]
+        img_id = anno_info['file_name'].split('.')[0]
+
+        # save PIL image object to disk
+        mask_path = output_mask_dir / f"{img_id}.png"
+        item['mask'].save(mask_path)
+
+        # save anno info to output_annotations
+        output_annotations.append(anno_info)
+
+        # save image info to output_img_infos
+        output_img_infos.append(item['image_info'])
+
+    output_json = {}
+    output_json['images'] = output_img_infos
+    output_json['annotations'] = output_annotations
+    output_json['categories']=[{'supercategory': 'person', 'isthing': 1, 'id': 1, 'name': 'person'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 2, 'name': 'bicycle'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 3, 'name': 'car'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 4, 'name': 'motorcycle'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 5, 'name': 'airplane'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 6, 'name': 'bus'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 7, 'name': 'train'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 8, 'name': 'truck'}, {'supercategory': 'vehicle', 'isthing': 1, 'id': 9, 'name': 'boat'}, {'supercategory': 'outdoor', 'isthing': 1, 'id': 10, 'name': 'traffic light'}, {'supercategory': 'outdoor', 'isthing': 1, 'id': 11, 'name': 'fire hydrant'}, {'supercategory': 'outdoor', 'isthing': 1, 'id': 13, 'name': 'stop sign'}, {'supercategory': 'outdoor', 'isthing': 1, 'id': 14, 'name': 'parking meter'}, {'supercategory': 'outdoor', 'isthing': 1, 'id': 15, 'name': 'bench'}, {'supercategory': 'animal', 'isthing': 1, 'id': 16, 'name': 'bird'}, {'supercategory': 'animal', 'isthing': 1, 'id': 17, 'name': 'cat'}, {'supercategory': 'animal', 'isthing': 1, 'id': 18, 'name': 'dog'}, {'supercategory': 'animal', 'isthing': 1, 'id': 19, 'name': 'horse'}, {'supercategory': 'animal', 'isthing': 1, 'id': 20, 'name': 'sheep'}, {'supercategory': 'animal', 'isthing': 1, 'id': 21, 'name': 'cow'}, {'supercategory': 'animal', 'isthing': 1, 'id': 22, 'name': 'elephant'}, {'supercategory': 'animal', 'isthing': 1, 'id': 23, 'name': 'bear'}, {'supercategory': 'animal', 'isthing': 1, 'id': 24, 'name': 'zebra'}, {'supercategory': 'animal', 'isthing': 1, 'id': 25, 'name': 'giraffe'}, {'supercategory': 'accessory', 'isthing': 1, 'id': 27, 'name': 'backpack'}, {'supercategory': 'accessory', 'isthing': 1, 'id': 28, 'name': 'umbrella'}, {'supercategory': 'accessory', 'isthing': 1, 'id': 31, 'name': 'handbag'}, {'supercategory': 'accessory', 'isthing': 1, 'id': 32, 'name': 'tie'}, {'supercategory': 'accessory', 'isthing': 1, 'id': 33, 'name': 'suitcase'}, {'supercategory': 'sports', 'isthing': 1, 'id': 34, 'name': 'frisbee'}, {'supercategory': 'sports', 'isthing': 1, 'id': 35, 'name': 'skis'}, {'supercategory': 'sports', 'isthing': 1, 'id': 36, 'name': 'snowboard'}, {'supercategory': 'sports', 'isthing': 1, 'id': 37, 'name': 'sports ball'}, {'supercategory': 'sports', 'isthing': 1, 'id': 38, 'name': 'kite'}, {'supercategory': 'sports', 'isthing': 1, 'id': 39, 'name': 'baseball bat'}, {'supercategory': 'sports', 'isthing': 1, 'id': 40, 'name': 'baseball glove'}, {'supercategory': 'sports', 'isthing': 1, 'id': 41, 'name': 'skateboard'}, {'supercategory': 'sports', 'isthing': 1, 'id': 42, 'name': 'surfboard'}, {'supercategory': 'sports', 'isthing': 1, 'id': 43, 'name': 'tennis racket'}, {'supercategory': 'kitchen', 'isthing': 1, 'id': 44, 'name': 'bottle'}, {'supercategory': 'kitchen', 'isthing': 1, 'id': 46, 'name': 'wine glass'}, {'supercategory': 'kitchen', 'isthing': 1, 'id': 47, 'name': 'cup'}, {'supercategory': 'kitchen', 'isthing': 1, 'id': 48, 'name': 'fork'}, {'supercategory': 'kitchen', 'isthing': 1, 'id': 49, 'name': 'knife'}, {'supercategory': 'kitchen', 'isthing': 1, 'id': 50, 'name': 'spoon'}, {'supercategory': 'kitchen', 'isthing': 1, 'id': 51, 'name': 'bowl'}, {'supercategory': 'food', 'isthing': 1, 'id': 52, 'name': 'banana'}, {'supercategory': 'food', 'isthing': 1, 'id': 53, 'name': 'apple'}, {'supercategory': 'food', 'isthing': 1, 'id': 54, 'name': 'sandwich'}, {'supercategory': 'food', 'isthing': 1, 'id': 55, 'name': 'orange'}, {'supercategory': 'food', 'isthing': 1, 'id': 56, 'name': 'broccoli'}, {'supercategory': 'food', 'isthing': 1, 'id': 57, 'name': 'carrot'}, {'supercategory': 'food', 'isthing': 1, 'id': 58, 'name': 'hot dog'}, {'supercategory': 'food', 'isthing': 1, 'id': 59, 'name': 'pizza'}, {'supercategory': 'food', 'isthing': 1, 'id': 60, 'name': 'donut'}, {'supercategory': 'food', 'isthing': 1, 'id': 61, 'name': 'cake'}, {'supercategory': 'furniture', 'isthing': 1, 'id': 62, 'name': 'chair'}, {'supercategory': 'furniture', 'isthing': 1, 'id': 63, 'name': 'couch'}, {'supercategory': 'furniture', 'isthing': 1, 'id': 64, 'name': 'potted plant'}, {'supercategory': 'furniture', 'isthing': 1, 'id': 65, 'name': 'bed'}, {'supercategory': 'furniture', 'isthing': 1, 'id': 67, 'name': 'dining table'}, {'supercategory': 'furniture', 'isthing': 1, 'id': 70, 'name': 'toilet'}, {'supercategory': 'electronic', 'isthing': 1, 'id': 72, 'name': 'tv'}, {'supercategory': 'electronic', 'isthing': 1, 'id': 73, 'name': 'laptop'}, {'supercategory': 'electronic', 'isthing': 1, 'id': 74, 'name': 'mouse'}, {'supercategory': 'electronic', 'isthing': 1, 'id': 75, 'name': 'remote'}, {'supercategory': 'electronic', 'isthing': 1, 'id': 76, 'name': 'keyboard'}, {'supercategory': 'electronic', 'isthing': 1, 'id': 77, 'name': 'cell phone'}, {'supercategory': 'appliance', 'isthing': 1, 'id': 78, 'name': 'microwave'}, {'supercategory': 'appliance', 'isthing': 1, 'id': 79, 'name': 'oven'}, {'supercategory': 'appliance', 'isthing': 1, 'id': 80, 'name': 'toaster'}, {'supercategory': 'appliance', 'isthing': 1, 'id': 81, 'name': 'sink'}, {'supercategory': 'appliance', 'isthing': 1, 'id': 82, 'name': 'refrigerator'}, {'supercategory': 'indoor', 'isthing': 1, 'id': 84, 'name': 'book'}, {'supercategory': 'indoor', 'isthing': 1, 'id': 85, 'name': 'clock'}, {'supercategory': 'indoor', 'isthing': 1, 'id': 86, 'name': 'vase'}, {'supercategory': 'indoor', 'isthing': 1, 'id': 87, 'name': 'scissors'}, {'supercategory': 'indoor', 'isthing': 1, 'id': 88, 'name': 'teddy bear'}, {'supercategory': 'indoor', 'isthing': 1, 'id': 89, 'name': 'hair drier'}, {'supercategory': 'indoor', 'isthing': 1, 'id': 90, 'name': 'toothbrush'}, {'supercategory': 'textile', 'isthing': 0, 'id': 92, 'name': 'banner'}, {'supercategory': 'textile', 'isthing': 0, 'id': 93, 'name': 'blanket'}, {'supercategory': 'building', 'isthing': 0, 'id': 95, 'name': 'bridge'}, {'supercategory': 'raw-material', 'isthing': 0, 'id': 100, 'name': 'cardboard'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 107, 'name': 'counter'}, {'supercategory': 'textile', 'isthing': 0, 'id': 109, 'name': 'curtain'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 112, 'name': 'door-stuff'}, {'supercategory': 'floor', 'isthing': 0, 'id': 118, 'name': 'floor-wood'}, {'supercategory': 'plant', 'isthing': 0, 'id': 119, 'name': 'flower'}, {'supercategory': 'food-stuff', 'isthing': 0, 'id': 122, 'name': 'fruit'}, {'supercategory': 'ground', 'isthing': 0, 'id': 125, 'name': 'gravel'}, {'supercategory': 'building', 'isthing': 0, 'id': 128, 'name': 'house'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 130, 'name': 'light'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 133, 'name': 'mirror-stuff'}, {'supercategory': 'structural', 'isthing': 0, 'id': 138, 'name': 'net'}, {'supercategory': 'textile', 'isthing': 0, 'id': 141, 'name': 'pillow'}, {'supercategory': 'ground', 'isthing': 0, 'id': 144, 'name': 'platform'}, {'supercategory': 'ground', 'isthing': 0, 'id': 145, 'name': 'playingfield'}, {'supercategory': 'ground', 'isthing': 0, 'id': 147, 'name': 'railroad'}, {'supercategory': 'water', 'isthing': 0, 'id': 148, 'name': 'river'}, {'supercategory': 'ground', 'isthing': 0, 'id': 149, 'name': 'road'}, {'supercategory': 'building', 'isthing': 0, 'id': 151, 'name': 'roof'}, {'supercategory': 'ground', 'isthing': 0, 'id': 154, 'name': 'sand'}, {'supercategory': 'water', 'isthing': 0, 'id': 155, 'name': 'sea'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 156, 'name': 'shelf'}, {'supercategory': 'ground', 'isthing': 0, 'id': 159, 'name': 'snow'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 161, 'name': 'stairs'}, {'supercategory': 'building', 'isthing': 0, 'id': 166, 'name': 'tent'}, {'supercategory': 'textile', 'isthing': 0, 'id': 168, 'name': 'towel'}, {'supercategory': 'wall', 'isthing': 0, 'id': 171, 'name': 'wall-brick'}, {'supercategory': 'wall', 'isthing': 0, 'id': 175, 'name': 'wall-stone'}, {'supercategory': 'wall', 'isthing': 0, 'id': 176, 'name': 'wall-tile'}, {'supercategory': 'wall', 'isthing': 0, 'id': 177, 'name': 'wall-wood'}, {'supercategory': 'water', 'isthing': 0, 'id': 178, 'name': 'water-other'}, {'supercategory': 'window', 'isthing': 0, 'id': 180, 'name': 'window-blind'}, {'supercategory': 'window', 'isthing': 0, 'id': 181, 'name': 'window-other'}, {'supercategory': 'plant', 'isthing': 0, 'id': 184, 'name': 'tree-merged'}, {'supercategory': 'structural', 'isthing': 0, 'id': 185, 'name': 'fence-merged'}, {'supercategory': 'ceiling', 'isthing': 0, 'id': 186, 'name': 'ceiling-merged'}, {'supercategory': 'sky', 'isthing': 0, 'id': 187, 'name': 'sky-other-merged'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 188, 'name': 'cabinet-merged'}, {'supercategory': 'furniture-stuff', 'isthing': 0, 'id': 189, 'name': 'table-merged'}, {'supercategory': 'floor', 'isthing': 0, 'id': 190, 'name': 'floor-other-merged'}, {'supercategory': 'ground', 'isthing': 0, 'id': 191, 'name': 'pavement-merged'}, {'supercategory': 'solid', 'isthing': 0, 'id': 192, 'name': 'mountain-merged'}, {'supercategory': 'plant', 'isthing': 0, 'id': 193, 'name': 'grass-merged'}, {'supercategory': 'ground', 'isthing': 0, 'id': 194, 'name': 'dirt-merged'}, {'supercategory': 'raw-material', 'isthing': 0, 'id': 195, 'name': 'paper-merged'}, {'supercategory': 'food-stuff', 'isthing': 0, 'id': 196, 'name': 'food-other-merged'}, {'supercategory': 'building', 'isthing': 0, 'id': 197, 'name': 'building-other-merged'}, {'supercategory': 'solid', 'isthing': 0, 'id': 198, 'name': 'rock-merged'}, {'supercategory': 'wall', 'isthing': 0, 'id': 199, 'name': 'wall-other-merged'}, {'supercategory': 'textile', 'isthing': 0, 'id': 200, 'name': 'rug-merged'}]
+    output_json['licenses']=[{'url': 'http://creativecommons.org/licenses/by-nc-sa/2.0/', 'id': 1, 'name': 'Attribution-NonCommercial-ShareAlike License'}, {'url': 'http://creativecommons.org/licenses/by-nc/2.0/', 'id': 2, 'name': 'Attribution-NonCommercial License'}, {'url': 'http://creativecommons.org/licenses/by-nc-nd/2.0/', 'id': 3, 'name': 'Attribution-NonCommercial-NoDerivs License'}, {'url': 'http://creativecommons.org/licenses/by/2.0/', 'id': 4, 'name': 'Attribution License'}, {'url': 'http://creativecommons.org/licenses/by-sa/2.0/', 'id': 5, 'name': 'Attribution-ShareAlike License'}, {'url': 'http://creativecommons.org/licenses/by-nd/2.0/', 'id': 6, 'name': 'Attribution-NoDerivs License'}, {'url': 'http://flickr.com/commons/usage/', 'id': 7, 'name': 'No known copyright restrictions'}, {'url': 'http://www.usa.gov/copyright.shtml', 'id': 8, 'name': 'United States Government Work'}]
+    output_json['info']={'description': 'COCO 2018 Panoptic Dataset', 'url': 'http://cocodataset.org', 'version': '1.0', 'year': 2018, 'contributor': 'https://arxiv.org/abs/1801.00868', 'date_created': '2018-06-01 00:00:00.0'}
+
+    with open(output_json_file, 'w') as f:
+        json.dump(output_json, f, indent=4)
+
+    logger.info(f"Downloaded {COCONUT_SPLIT} successfully!")
+    logger.info(f"Now working on captions...")
+
+    # Download and extract captions
+    captions_url = data_cfg.coconut.captions_url
+    captions_tar_path = Path(data_cfg.coconut.captions_tar_path)
+    
+    # Download captions tar file if not already present
+    if not captions_tar_path.exists():
+        logger.info(f"Downloading captions from {captions_url}...")
+        urllib.request.urlretrieve(captions_url, captions_tar_path)
+        logger.info("Captions tar downloaded successfully!")
+    else:
+        logger.info(f"Captions tar already exists at {captions_tar_path}")
+    
+    # Extract captions to the specified directory
+    if not output_captions_dir.exists() or len(list(output_captions_dir.glob("*.txt"))) == 0:
+        logger.info(f"Extracting captions to {output_captions_dir}...")
+        output_captions_dir.mkdir(parents=True, exist_ok=True)
+        
+        with tarfile.open(captions_tar_path, 'r') as tar:
+            tar.extractall(path=output_captions_dir)
+        
+        logger.info("Captions extracted successfully!")
+    else:
+        logger.info(f"Captions already extracted at {output_captions_dir}")
+
