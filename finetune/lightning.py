@@ -17,9 +17,11 @@ class FineTuner(L.LightningModule):
         return self.model(**batch)
 
     def training_step(self, batch: dict, batch_idx: int):
-        outputs = self.model(**batch)
+        outputs = self.model(**batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
-        auxiliary_loss = self.auxiliary_loss(**batch)
+        auxiliary_loss = self.auxiliary_loss(
+            batch["labels"], outputs.logits, outputs.attentions
+        )
 
         log_dict = {
             "train/ce_loss": loss,
@@ -30,9 +32,11 @@ class FineTuner(L.LightningModule):
         return loss + auxiliary_loss
 
     def validation_step(self, batch: dict, batch_idx: int):
-        outputs = self.model(**batch)
+        outputs = self.model(**batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
-        auxiliary_loss = self.auxiliary_loss(**batch)
+        auxiliary_loss = self.auxiliary_loss(
+            batch["labels"], outputs.logits, outputs.attentions
+        )
         accuracy = (outputs.logits.argmax(dim=-1) == batch["labels"]).float().mean()
 
         log_dict = {

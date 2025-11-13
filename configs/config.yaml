@@ -10,5 +10,4 @@ seed: 42
 checkpoint_every_n_epochs: 10
 
 wandb:
-  project: finetune-project
-  entity: your-wandb-entity
+  project: saliency-alignment

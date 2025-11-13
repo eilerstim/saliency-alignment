@@ -1,2 +1,2 @@
-_target_: finetune.criterion.AuxiliaryLoss
-weight: 0.1
+_target_: finetune.criterion.ZeroCriterion
+weight: 0.5  # Defined for all criterion classes, default is 1.0
