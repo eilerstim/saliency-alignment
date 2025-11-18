@@ -128,7 +128,11 @@ class COCODataset(Dataset):
         captions_anns = self.captions.loadAnns(captions_ids)
         caption_texts = [ann["caption"] for ann in captions_anns]
 
-        return image, mask, caption_texts
+        return {
+            "image": image,
+            "mask": mask,
+            "captions": caption_texts,
+        }
 
 
 class COCONutPanCapDataset(Dataset):
@@ -250,7 +254,13 @@ class COCONutPanCapDataset(Dataset):
                 (seg["id"], seg["category_id"]) for seg in annotation["segments_info"]
             ]
 
-        return image, mask, caption_text, segments_info
+        # Return a dict for clarity
+        return {
+            "image": image,
+            "mask": mask,
+            "caption": caption_text,
+            "segments_info": segments_info,
+        }
 
 
 def save_data(
