@@ -1,7 +1,11 @@
 import lightning as L
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
+
+from finetune.cli.save_data import COCONutPanCapDataset
+from finetune.data import eval_collate_fn, train_collate_fn
 
 
 class FineTuner(L.LightningModule):
@@ -55,3 +59,9 @@ class FineTuner(L.LightningModule):
 
         scheduler = instantiate(self.cfg.scheduler, optimizer=optimizer)
         return [optimizer], [scheduler]
+
+    def train_dataloader(self):
+        return DataLoader(COCONutPanCapDataset(split="train"), collate_fn=train_collate_fn, batch_size=self.cfg.batch_size, shuffle=True, num_workers=self.cfg.num_workers)
+
+    def val_dataloader(self):
+        return DataLoader(COCONutPanCapDataset(split="validation"), collate_fn=eval_collate_fn, batch_size=self.cfg.batch_size, shuffle=False, num_workers=self.cfg.num_workers)
