@@ -28,7 +28,8 @@ def train_collate_fn(examples, processor):
             - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
-            - annotation_ids (torch.Tensor): Segment annotation IDs for each token [batch_size, seq_len]
+            - annotation_ids (list[list[list[int]]]): Nested list structure [batch_size][seq_len][num_regions]
+              where each token has a list of all region IDs it refers to (empty list for non-annotated tokens)
             - masks (torch.Tensor): Stacked segmentation masks [batch_size, height, width]
             - segments_infos (list): List of segments_info for each example in batch
 
@@ -100,11 +101,12 @@ def train_collate_fn(examples, processor):
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
     # Build annotation_ids aligned 1:1 with input_ids
+    # annotation_ids will be a list of lists of lists: [batch_size][seq_len][num_regions]
     batch_size, seq_len = input_ids.shape
-    annotation_ids = torch.zeros_like(input_ids, dtype=torch.long)
+    annotation_ids = [[[] for _ in range(seq_len)] for _ in range(batch_size)]
 
     for i, caption in enumerate(captions_annotated):
-        # Tokenize annotated caption to get per-token annotation ids in caption space
+        # Tokenize annotated caption to get per-token annotation ids (list of lists) in caption space
         cap_token_ids, cap_ann_ids = tokenize_with_annotations(
             caption, processor.tokenizer, add_special_tokens=False
         )
@@ -122,11 +124,12 @@ def train_collate_fn(examples, processor):
             aligned_ann_ids = cap_ann_ids[:caption_len]
         else:
             pad_len = caption_len - len(cap_ann_ids)
-            aligned_ann_ids = cap_ann_ids + [0] * pad_len
+            aligned_ann_ids = cap_ann_ids + [[]] * pad_len
 
-        annotation_ids[i, caption_start : caption_start + caption_len] = torch.tensor(
-            aligned_ann_ids, dtype=torch.long
-        )
+        # Copy the annotation ID lists into the batch structure
+        for j, ann_id_list in enumerate(aligned_ann_ids):
+            if caption_start + j < seq_len:
+                annotation_ids[i][caption_start + j] = ann_id_list.copy()
 
     # Stack masks into a batch tensor
     masks = torch.stack(masks)
