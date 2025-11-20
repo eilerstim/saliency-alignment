@@ -35,7 +35,10 @@ class FineTuner(L.LightningModule):
         outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
 
-        # Auxiliary loss can leverage annotation_ids, masks, and segments_infos
+        # TODO: Implement auxiliary loss using the following arguments:
+        #   - annotation_ids: torch.Tensor [batch_size, seq_len, max_regions] - region IDs per token (0 for padding)
+        #   - masks: torch.Tensor [batch_size, H, W] - segmentation masks with pixel values as segment IDs
+        #   - segments_infos: torch.Tensor [batch_size, max_segments, 2] - (segment_id, category_id) pairs, padded with -1
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             preds=outputs.logits,

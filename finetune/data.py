@@ -19,7 +19,7 @@ def train_collate_fn(examples, processor):
             - caption: Annotated caption string with <id: text> markers
             - mask: Segmentation mask tensor
             - segments_info: List of (segment_id, category_id) tuples
-        processor: Vision-language model processor (e.g., Qwen2VLProcessor)
+        processor: Vision-language model processor
             that handles both image and text processing.
 
     Returns:
@@ -28,10 +28,11 @@ def train_collate_fn(examples, processor):
             - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
-            - annotation_ids (list[list[list[int]]]): Nested list structure [batch_size][seq_len][num_regions]
-              where each token has a list of all region IDs it refers to (empty list for non-annotated tokens)
+            - annotation_ids (torch.Tensor): Tensor of shape [batch_size, seq_len, max_regions]
+              where each token has region IDs it refers to (0 for padding/non-annotated tokens)
             - masks (torch.Tensor): Stacked segmentation masks [batch_size, height, width]
-            - segments_infos (list): List of segments_info for each example in batch
+            - segments_infos (torch.Tensor): Tensor of shape [batch_size, max_segments, 2]
+              containing (segment_id, category_id) pairs, padded with -1
 
     Note:
         The function creates clean captions by removing <id: text> markers before
@@ -101,9 +102,9 @@ def train_collate_fn(examples, processor):
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
     # Build annotation_ids aligned 1:1 with input_ids
-    # annotation_ids will be a list of lists of lists: [batch_size][seq_len][num_regions]
+    # annotation_ids will be a tensor: [batch_size, seq_len, max_regions]
     batch_size, seq_len = input_ids.shape
-    annotation_ids = [[[] for _ in range(seq_len)] for _ in range(batch_size)]
+    annotation_ids_lists = [[[] for _ in range(seq_len)] for _ in range(batch_size)]
 
     for i, caption in enumerate(captions_annotated):
         # Tokenize annotated caption to get per-token annotation ids (list of lists) in caption space
@@ -129,7 +130,36 @@ def train_collate_fn(examples, processor):
         # Copy the annotation ID lists into the batch structure
         for j, ann_id_list in enumerate(aligned_ann_ids):
             if caption_start + j < seq_len:
-                annotation_ids[i][caption_start + j] = ann_id_list.copy()
+                annotation_ids_lists[i][caption_start + j] = ann_id_list.copy()
+
+    # Convert annotation_ids to tensor
+    # Find max number of regions per token across the batch
+    max_regions = max(
+        len(ann_list) 
+        for batch_item in annotation_ids_lists 
+        for ann_list in batch_item
+    ) if any(annotation_ids_lists) else 1
+    max_regions = max(max_regions, 1)  # Ensure at least 1
+    
+    # Create tensor and fill with 0 (padding)
+    annotation_ids = torch.zeros((batch_size, seq_len, max_regions), dtype=torch.long)
+    for i in range(batch_size):
+        for j in range(seq_len):
+            ann_list = annotation_ids_lists[i][j]
+            if ann_list:
+                annotation_ids[i, j, :len(ann_list)] = torch.tensor(ann_list, dtype=torch.long)
+
+    # Convert segments_infos to tensor
+    # Find max number of segments across the batch
+    max_segments = max(len(si) for si in segments_infos) if segments_infos else 1
+    max_segments = max(max_segments, 1)  # Ensure at least 1
+    
+    # Create tensor and fill with -1 (padding)
+    segments_infos_tensor = torch.full((batch_size, max_segments, 2), -1, dtype=torch.long)
+    for i, seg_info in enumerate(segments_infos):
+        if seg_info:
+            segments_infos_tensor[i, :len(seg_info)] = torch.tensor(seg_info, dtype=torch.long)
+    segments_infos = segments_infos_tensor
 
     # Stack masks into a batch tensor
     masks = torch.stack(masks)
@@ -176,7 +206,8 @@ def eval_collate_fn(examples, processor):
             - pixel_values (torch.Tensor): Processed image tensor
             - answers (list): List of ground truth caption strings
             - masks (torch.Tensor): Stacked segmentation masks [batch_size, height, width]
-            - segments_infos (list): List of segments_info for each example in batch
+            - segments_infos (torch.Tensor): Tensor of shape [batch_size, max_segments, 2]
+              containing (segment_id, category_id) pairs, padded with -1
 
     Note:
         Unlike train_collate_fn, this uses add_generation_prompt=True to prepare
@@ -220,5 +251,18 @@ def eval_collate_fn(examples, processor):
 
     # Stack masks into a batch tensor
     masks = torch.stack(masks)
+
+    # Convert segments_infos to tensor
+    # Find max number of segments across the batch
+    batch_size = len(segments_infos)
+    max_segments = max(len(si) for si in segments_infos) if segments_infos else 1
+    max_segments = max(max_segments, 1)  # Ensure at least 1
+    
+    # Create tensor and fill with -1 (padding)
+    segments_infos_tensor = torch.full((batch_size, max_segments, 2), -1, dtype=torch.long)
+    for i, seg_info in enumerate(segments_infos):
+        if seg_info:
+            segments_infos_tensor[i, :len(seg_info)] = torch.tensor(seg_info, dtype=torch.long)
+    segments_infos = segments_infos_tensor
 
     return input_ids, attention_mask, pixel_values, answers, masks, segments_infos
