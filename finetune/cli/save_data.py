@@ -204,9 +204,7 @@ class COCONutPanCapDataset(Dataset):
         n_train = int(0.9 * n_total)
 
         # Use torch.Generator for reproducible sampling that does not affect global RNG
-        g = torch.Generator()
-        if data_cfg.seed is not None:
-            g.manual_seed(data_cfg.seed)
+        g = torch.Generator() # Seed already set in main script
 
         perm = torch.randperm(n_total, generator=g).tolist()
         train_idx = set(perm[:n_train])
