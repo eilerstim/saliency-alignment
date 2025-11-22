@@ -1,7 +1,7 @@
 [project]
-name = "finetune"
+name = "saliency-alignment"
 version = "0.1.0"
-description = "Fine-tuning language models with Lightning and Hydra"
+description = "Fine-tuning video-language models with saliency alignment term for improved grounding."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
