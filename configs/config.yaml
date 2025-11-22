@@ -1,7 +1,7 @@
 defaults:
-  - model: mamba2.8
+  - model: llava-1.5-7b
   - optim: adamw
-  - data: the_pile
+  - data: coco
   - loss: default
   - trainer
   - _self_
@@ -11,3 +11,4 @@ checkpoint_every_n_epochs: 10
 
 wandb:
   project: saliency-alignment
+  entity: teilers-eth-z-rich
