@@ -68,8 +68,8 @@ other_param: value
 
 A criterion takes as input the following parameters:
 - `labels (batch_size, seq_len)`: The ground truth labels from the dataset.
-- `preds (batch_size, seq_len, vocab_size)`: The model predictions logits.
-- `attentions (list(vocab_size, vocab_size))`: The attention weights from the model.
+- `preds (batch_size, seq_len, vocab_size)`: The model prediction logits.
+- `attentions (list(batch_size, num_heads, seq_len, seq_len))`: The attention weights from the model.
 - `annotation_ids (batch_size, seq_len, max_annotations)`: Annotation IDs per token (-1 for padding).
 - `masks (batch_size, H, W)`: Segmentation masks with pixel values as segment IDs.
 - `segments_infos (batch_size, max_segments, 2)`: (segment_id, category_id) pairs, padded with -1.

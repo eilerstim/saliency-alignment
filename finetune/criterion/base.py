@@ -45,4 +45,19 @@ class Criterion(ABC):
         masks: torch.Tensor,
         segment_infos: torch.Tensor,
         **kwargs: Any,
-    ) -> float: ...
+    ) -> float:
+        """Compute the auxiliary loss.
+
+        Args:
+            labels (torch.Tensor): Ground truth labels.  [batch_size, seq_len]
+            preds (torch.Tensor): The model prediction logits. [batch_size, seq_len, vocab_size]
+            attentions (Sequence[torch.Tensor]): The attention weights from the model. [List of tensors with shape [batch_size, num_heads, seq_len, seq_len]]
+            annotation_ids (torch.Tensor): Annotation IDs per token (-1 for padding). [batch_size, seq_len, max_annotations]
+            masks (torch.Tensor): Segmentation masks with pixel values as segment IDs. [batch_size, H, W]
+            segment_infos (torch.Tensor): (segment_id, category_id) pairs, padded with -1. [batch_size, max_segments, 2]
+            **kwargs (Any): Additional keyword arguments
+
+        Returns:
+            float: Computed auxiliary loss.
+        """
+        ...
