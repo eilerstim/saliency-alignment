@@ -1,2 +1,2 @@
-_target_: finetune.criterion.ZeroCriterion
+_target_: finetune.criterion.zero.ZeroCriterion
 weight: 0.5  # Defined for all criterion classes, default is 1.0
