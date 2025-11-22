@@ -9,6 +9,7 @@
 #SBATCH --nodes=1
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpumem:64g
+#SBATCH --mail-type=END,FAIL
 
 echo "Beginning finetuning at $(date)"
 
