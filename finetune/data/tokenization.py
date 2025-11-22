@@ -12,7 +12,7 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
     "<id1,id2,id3: description>" for multiple segments.
     For example: "I saw <1: a dog> and <2: a cat>" becomes:
     [([],"I saw "), ([1], "a dog"), ([], " and "), ([2], "a cat")]
-    
+
     And "< 62,63,48: Additional people>" becomes:
     [([62, 63, 48], "Additional people")]
 
@@ -26,7 +26,7 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
     # Pattern to match annotations like "<1: a dog>" or "< 62,63,48: Additional people>"
     pattern = r"<\s*([\d,\s]+)\s*:\s*([^>]+)>"
 
-    result = []
+    result: list[tuple[list[int], str]] = []
     last_end = 0
 
     for match in re.finditer(pattern, caption):
@@ -39,14 +39,14 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
         # Parse the comma-separated segment IDs
         raw_ids = match.group(1)
         annotated_text = match.group(2)
-        
+
         # Split by comma, strip spaces, filter valid integers
         id_list = [
             int(x)
             for x in (part.strip() for part in raw_ids.split(","))
             if x and x.isdigit()
         ]
-        
+
         result.append((id_list, annotated_text))
 
         last_end = match.end()
@@ -97,10 +97,14 @@ def tokenize_with_annotations(
     if add_special_tokens:
         if tokenizer.bos_token_id is not None:
             all_token_ids = [tokenizer.bos_token_id] + all_token_ids
-            all_annotation_ids = [[]] + all_annotation_ids  # BOS gets empty annotation list
+            all_annotation_ids = [
+                []
+            ] + all_annotation_ids  # BOS gets empty annotation list
         if tokenizer.eos_token_id is not None:
             all_token_ids = all_token_ids + [tokenizer.eos_token_id]
-            all_annotation_ids = all_annotation_ids + [[]]  # EOS gets empty annotation list
+            all_annotation_ids = all_annotation_ids + [
+                []
+            ]  # EOS gets empty annotation list
 
     return all_token_ids, all_annotation_ids
 
@@ -109,7 +113,7 @@ def batch_tokenize_with_annotations(
     captions: list[str],
     tokenizer: PreTrainedTokenizer,
     padding: bool = True,
-    max_length: int = None,
+    max_length: int | None = None,
     add_special_tokens: bool = False,
 ) -> tuple[list[list[int]], list[list[list[int]]]]:
     """Tokenize a batch of captions with annotation tracking.
@@ -159,7 +163,9 @@ def batch_tokenize_with_annotations(
                 batch_token_ids[i] = (
                     batch_token_ids[i] + [pad_token_id] * padding_length
                 )
-                batch_annotation_ids[i] = batch_annotation_ids[i] + [[]] * padding_length
+                batch_annotation_ids[i] = (
+                    batch_annotation_ids[i] + [[]] * padding_length
+                )
 
     return batch_token_ids, batch_annotation_ids
 

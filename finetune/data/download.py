@@ -64,9 +64,6 @@ def download_coconut(data_cfg: DictConfig):
 
     Args:
         data_cfg: Data configuration containing paths and URLs for the dataset.
-
-    Returns:
-        Path to the output directory containing the downloaded dataset.
     """
     # Check if files already exist
     output_json_file = Path(data_cfg.coconut.ann_file)
@@ -117,7 +114,7 @@ def download_coconut(data_cfg: DictConfig):
         # save image info to output_img_infos
         output_img_infos.append(item["image_info"])
 
-    output_json = {}
+    output_json: dict[str, object] = {}
     output_json["images"] = output_img_infos
     output_json["annotations"] = output_annotations
     output_json["categories"] = [

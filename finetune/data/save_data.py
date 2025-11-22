@@ -10,7 +10,7 @@ from PIL import Image
 from pycocotools.coco import COCO
 from torch.utils.data import Dataset
 
-from finetune.cli.download import download_coco, download_coconut
+from finetune.data.download import download_coco, download_coconut
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,6 @@ class COCODataset(Dataset):
         coco: COCO API instance for segmentation annotations.
         captions: COCO API instance for caption annotations.
         ids: List of image IDs in the dataset.
-        transform: Optional transform to apply to images.
         target_size: Target size (height, width) for resizing images and masks.
     """
 
@@ -36,15 +35,13 @@ class COCODataset(Dataset):
         self,
         data_cfg: DictConfig,
         split: Literal["train", "validation"],
-        transform=None,
-        target_size=(1024, 1024),
+        target_size: tuple[int, int] = (1024, 1024),
     ):
         """Initialize the COCO segmentation dataset.
 
         Args:
             data_cfg: Configuration containing data directory and annotation file paths.
             split: Dataset split to load, either "train" or "validation".
-            transform: Optional callable transform to apply to images. Defaults to None.
             target_size: Tuple of (height, width) to resize images and masks. Defaults to (1024, 1024).
         """
         download_coco(data_cfg)
@@ -60,7 +57,6 @@ class COCODataset(Dataset):
         self.coco = COCO(ann_file)
         self.captions = COCO(captions_file)
         self.ids = list(self.coco.imgs.keys())
-        self.transform = transform
         self.target_size = target_size
 
     def __len__(self):
@@ -71,7 +67,7 @@ class COCODataset(Dataset):
         """
         return len(self.ids)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict:
         """Load and return a single sample from the dataset.
 
         Loads an image, creates a merged segmentation mask with category IDs, and retrieves
@@ -81,8 +77,8 @@ class COCODataset(Dataset):
             idx: Index of the sample to retrieve.
 
         Returns:
-            Tuple containing:
-                - image: RGB image tensor (or PIL Image if no transform).
+            Dictionary containing:
+                - image: PIL Image
                 - mask: Long tensor of shape (H, W) with category IDs for each pixel.
                 - caption_texts: List of caption strings for this image.
         """
@@ -111,10 +107,6 @@ class COCODataset(Dataset):
             self.target_size, Image.NEAREST
         )
         mask = np.array(mask)
-
-        # Apply transform
-        if self.transform:
-            image = self.transform(image)
 
         # Convert mask to tensor
         mask = torch.from_numpy(mask).long()
@@ -204,15 +196,19 @@ class COCONutPanCapDataset(Dataset):
         n_train = int(0.9 * n_total)
 
         # Use torch.Generator for reproducible sampling that does not affect global RNG
-        g = torch.Generator() # Seed already set in main script
+        g = torch.Generator()  # Seed already set in main script
 
         perm = torch.randperm(n_total, generator=g).tolist()
         train_idx = set(perm[:n_train])
 
         if split == "train":
-            self.images = [images_with_captions[i] for i in range(n_total) if i in train_idx]
+            self.images = [
+                images_with_captions[i] for i in range(n_total) if i in train_idx
+            ]
         else:  # "validation"
-            self.images = [images_with_captions[i] for i in range(n_total) if i not in train_idx]
+            self.images = [
+                images_with_captions[i] for i in range(n_total) if i not in train_idx
+            ]
 
     def __len__(self):
         """Return the total number of images in the dataset.

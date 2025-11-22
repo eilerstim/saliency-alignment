@@ -1,12 +1,13 @@
 import torch
+from transformers import ProcessorMixin
 
-from finetune.tokenization import (
+from finetune.data.tokenization import (
     parse_annotated_caption,
     tokenize_with_annotations,
 )
 
 
-def train_collate_fn(examples, processor):
+def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
     """Collate function for training with annotation-aware tokenization.
 
     This function processes a batch of examples from the COCONut dataset, creating
@@ -39,8 +40,6 @@ def train_collate_fn(examples, processor):
         passing to the model, but separately tokenizes the annotated captions to
         maintain alignment between tokens and their corresponding segments.
     """
-    import torch
-
     images = []
     texts = []
     captions_annotated = []
@@ -104,7 +103,7 @@ def train_collate_fn(examples, processor):
     # Build annotation_ids aligned 1:1 with input_ids
     # annotation_ids will be a tensor: [batch_size, seq_len, max_regions]
     batch_size, seq_len = input_ids.shape
-    annotation_ids_lists = [[[] for _ in range(seq_len)] for _ in range(batch_size)]
+    annotation_ids_lists: list[list[list[int]]] = [[[] for _ in range(seq_len)] for _ in range(batch_size)]
 
     for i, caption in enumerate(captions_annotated):
         # Tokenize annotated caption to get per-token annotation ids (list of lists) in caption space
@@ -134,31 +133,41 @@ def train_collate_fn(examples, processor):
 
     # Convert annotation_ids to tensor
     # Find max number of regions per token across the batch
-    max_regions = max(
-        len(ann_list) 
-        for batch_item in annotation_ids_lists 
-        for ann_list in batch_item
-    ) if any(annotation_ids_lists) else 1
+    max_regions = (
+        max(
+            len(ann_list)
+            for batch_item in annotation_ids_lists
+            for ann_list in batch_item
+        )
+        if any(annotation_ids_lists)
+        else 1
+    )
     max_regions = max(max_regions, 1)  # Ensure at least 1
-    
+
     # Create tensor and fill with 0 (padding)
     annotation_ids = torch.zeros((batch_size, seq_len, max_regions), dtype=torch.long)
     for i in range(batch_size):
         for j in range(seq_len):
             ann_list = annotation_ids_lists[i][j]
             if ann_list:
-                annotation_ids[i, j, :len(ann_list)] = torch.tensor(ann_list, dtype=torch.long)
+                annotation_ids[i, j, : len(ann_list)] = torch.tensor(
+                    ann_list, dtype=torch.long
+                )
 
     # Convert segments_infos to tensor
     # Find max number of segments across the batch
     max_segments = max(len(si) for si in segments_infos) if segments_infos else 1
     max_segments = max(max_segments, 1)  # Ensure at least 1
-    
+
     # Create tensor and fill with -1 (padding)
-    segments_infos_tensor = torch.full((batch_size, max_segments, 2), -1, dtype=torch.long)
+    segments_infos_tensor = torch.full(
+        (batch_size, max_segments, 2), -1, dtype=torch.long
+    )
     for i, seg_info in enumerate(segments_infos):
         if seg_info:
-            segments_infos_tensor[i, :len(seg_info)] = torch.tensor(seg_info, dtype=torch.long)
+            segments_infos_tensor[i, : len(seg_info)] = torch.tensor(
+                seg_info, dtype=torch.long
+            )
     segments_infos = segments_infos_tensor
 
     # Stack masks into a batch tensor
@@ -183,7 +192,7 @@ def train_collate_fn(examples, processor):
     )
 
 
-def eval_collate_fn(examples, processor):
+def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
     """Collate function for evaluation and inference.
 
     This function processes a batch of examples for evaluation by feeding only
@@ -257,12 +266,16 @@ def eval_collate_fn(examples, processor):
     batch_size = len(segments_infos)
     max_segments = max(len(si) for si in segments_infos) if segments_infos else 1
     max_segments = max(max_segments, 1)  # Ensure at least 1
-    
+
     # Create tensor and fill with -1 (padding)
-    segments_infos_tensor = torch.full((batch_size, max_segments, 2), -1, dtype=torch.long)
+    segments_infos_tensor = torch.full(
+        (batch_size, max_segments, 2), -1, dtype=torch.long
+    )
     for i, seg_info in enumerate(segments_infos):
         if seg_info:
-            segments_infos_tensor[i, :len(seg_info)] = torch.tensor(seg_info, dtype=torch.long)
+            segments_infos_tensor[i, : len(seg_info)] = torch.tensor(
+                seg_info, dtype=torch.long
+            )
     segments_infos = segments_infos_tensor
 
     return input_ids, attention_mask, pixel_values, answers, masks, segments_infos
