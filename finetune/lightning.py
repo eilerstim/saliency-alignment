@@ -4,16 +4,16 @@ import lightning as L
 from hydra.utils import instantiate
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, ProcessorMixin
 
-from finetune.cli.save_data import COCONutPanCapDataset
-from finetune.data import eval_collate_fn, train_collate_fn
+from finetune.data.collators import eval_collate_fn, train_collate_fn
+from finetune.data.save_data import COCONutPanCapDataset
 
 
 class FineTuner(L.LightningModule):
     """Fine-tuning module for a pre-trained model."""
 
-    def __init__(self, cfg: DictConfig, model: PreTrainedModel, processor):
+    def __init__(self, cfg: DictConfig, model: PreTrainedModel, processor: ProcessorMixin):
         super().__init__()
         self.cfg = cfg
         self.model = model
@@ -74,12 +74,15 @@ class FineTuner(L.LightningModule):
             masks=batch.get("masks"),
             segments_infos=batch.get("segments_infos"),
         )
+
         # Optionally ignore padding (-100) when computing accuracy
         preds = outputs.logits.argmax(dim=-1)
         labels = batch["labels"]
         valid_token_mask = labels != -100
         if valid_token_mask.any():
-            accuracy = (preds[valid_token_mask] == labels[valid_token_mask]).float().mean()
+            accuracy = (
+                (preds[valid_token_mask] == labels[valid_token_mask]).float().mean()
+            )
         else:
             accuracy = (preds == labels).float().mean()
 
