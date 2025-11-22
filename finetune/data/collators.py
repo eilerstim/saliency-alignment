@@ -144,8 +144,8 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
     )
     max_regions = max(max_regions, 1)  # Ensure at least 1
 
-    # Create tensor and fill with 0 (padding)
-    annotation_ids = torch.zeros((batch_size, seq_len, max_regions), dtype=torch.long)
+    # Create tensor and fill with -1 (padding)
+    annotation_ids = torch.full((batch_size, seq_len, max_regions), -1, dtype=torch.long)
     for i in range(batch_size):
         for j in range(seq_len):
             ann_list = annotation_ids_lists[i][j]
