@@ -7,6 +7,8 @@ from .base import Criterion
 
 
 class ZeroCriterion(Criterion):
+    """A criterion that returns zero loss (equivalent to no auxiliary loss)."""
+
     def compute_loss(
         self,
         labels: torch.Tensor,
