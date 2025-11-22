@@ -1,5 +1,5 @@
 name: coco
-data_dir: ${oc.env:SCRATCH}/finetune/data/${.name}
+data_dir: ${oc.env:SCRATCH}/saliency-alignment/data/${.name}
 seed: 42 # for reproducibility in data splits
 
 train:
