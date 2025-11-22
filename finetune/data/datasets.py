@@ -243,8 +243,14 @@ class COCONutPanCapDataset(Dataset):
         # COCONut stores masks as PNG files with the same image ID
         mask_filename = f"{img_info['file_name'].split('.')[0]}.png"
         mask_path = self.mask_dir / mask_filename
-        mask = Image.open(mask_path)
-        mask = torch.from_numpy(np.array(mask)).long()
+        mask = np.array(Image.open(mask_path))
+        
+        # COCO panoptic masks are stored as RGB images where
+        # id = R + G * 256 + B * 256^2
+        if len(mask.shape) == 3 and mask.shape[2] == 3:
+            mask = mask[:, :, 0].astype(np.int32) + mask[:, :, 1].astype(np.int32) * 256 + mask[:, :, 2].astype(np.int32) * 256 * 256
+            
+        mask = torch.from_numpy(mask).long()
 
         # Load captions from TXT file
         caption_filename = f"{img_info['file_name'].split('.')[0]}.txt"
