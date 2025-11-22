@@ -25,9 +25,15 @@ class Criterion(ABC):
         labels: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
+        annotation_ids: torch.Tensor,
+        masks: torch.Tensor,
+        segment_infos: torch.Tensor,
         **kwargs: Any,
     ) -> float:
-        return self.weight * self.compute_loss(labels, preds, attentions, **kwargs)
+        loss = self.compute_loss(
+            labels, preds, attentions, annotation_ids, masks, segment_infos, **kwargs
+        )
+        return self.weight * loss
 
     @abstractmethod
     def compute_loss(
@@ -35,5 +41,8 @@ class Criterion(ABC):
         labels: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
+        annotation_ids: torch.Tensor,
+        masks: torch.Tensor,
+        segment_infos: torch.Tensor,
         **kwargs: Any,
     ) -> float: ...
