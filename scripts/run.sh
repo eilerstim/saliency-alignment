@@ -16,3 +16,5 @@ echo "Beginning finetuning at $(date)"
 source scripts/env.sh
 
 uv run -m finetune
+
+echo "Finished finetuning at $(date)"
