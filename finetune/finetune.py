@@ -3,14 +3,17 @@ import logging
 import hydra
 import lightning as L
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning.callbacks import (
+from lightning.pytorch.callbacks import (
     DeviceStatsMonitor,
     LearningRateMonitor,
     ModelCheckpoint,
 )
-from pytorch_lightning.loggers import CSVLogger, WandbLogger
-from transformers import AutoModelForImageTextToText, AutoProcessor #LlavaForConditionalGeneration
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
+from omegaconf import DictConfig, OmegaConf
+from transformers import (  # LlavaForConditionalGeneration
+    AutoModelForImageTextToText,
+    AutoProcessor,
+)
 
 from .lightning import FineTuner
 

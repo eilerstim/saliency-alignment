@@ -7,13 +7,15 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
 from finetune.data.collators import eval_collate_fn, train_collate_fn
-from finetune.data.save_data import COCONutPanCapDataset
+from finetune.data.datasets import COCONutPanCapDataset
 
 
 class FineTuner(L.LightningModule):
     """Fine-tuning module for a pre-trained model."""
 
-    def __init__(self, cfg: DictConfig, model: PreTrainedModel, processor: ProcessorMixin):
+    def __init__(
+        self, cfg: DictConfig, model: PreTrainedModel, processor: ProcessorMixin
+    ):
         super().__init__()
         self.cfg = cfg
         self.model = model
