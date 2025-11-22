@@ -34,6 +34,7 @@ class FineTuner(L.LightningModule):
             "labels": batch["labels"],
         }
 
+        # Forward pass
         outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
 
@@ -47,15 +48,18 @@ class FineTuner(L.LightningModule):
             segments_infos=batch.get("segments_infos"),
         )
 
+        # Log relevant metrics
         log_dict = {
             "train/ce_loss": loss,
             "train/auxiliary_loss": auxiliary_loss,
             "train/loss": loss + auxiliary_loss,
         }
         self.log_dict(log_dict, prog_bar=True)
+
         return loss + auxiliary_loss
 
     def validation_step(self, batch: dict, batch_idx: int):
+        # Only pass model-relevant inputs to the backbone
         model_batch = {
             "input_ids": batch["input_ids"],
             "attention_mask": batch["attention_mask"],
@@ -63,8 +67,11 @@ class FineTuner(L.LightningModule):
             "labels": batch["labels"],
         }
 
+        # Forward pass
         outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
+
+        # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             preds=outputs.logits,
@@ -85,6 +92,7 @@ class FineTuner(L.LightningModule):
         else:
             accuracy = (preds == labels).float().mean()
 
+        # Log relevant metrics
         log_dict = {
             "val/ce_loss": loss,
             "val/auxiliary_loss": auxiliary_loss,
@@ -93,7 +101,7 @@ class FineTuner(L.LightningModule):
         }
         self.log_dict(log_dict, prog_bar=True)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> tuple:
         optimizer = instantiate(self.cfg.optim, params=self.model.parameters())
 
         if "scheduler" not in self.cfg:
@@ -102,33 +110,18 @@ class FineTuner(L.LightningModule):
         scheduler = instantiate(self.cfg.scheduler, optimizer=optimizer)
         return [optimizer], [scheduler]
 
-    def train_dataloader(self):
+    def train_dataloader(self) -> DataLoader:
         dataset = COCONutPanCapDataset(self.cfg.data, split="train")
         collate = partial(train_collate_fn, processor=self.processor)
 
-        dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", None)
-        if dl_kwargs is None:
-            dl_kwargs = {
-                "batch_size": self.cfg.batch_size,
-                "num_workers": self.cfg.num_workers,
-                "shuffle": True,
-            }
-
+        dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
         return DataLoader(dataset, collate_fn=collate, **dl_kwargs)
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader:
         dataset = COCONutPanCapDataset(self.cfg.data, split="validation")
         collate = partial(eval_collate_fn, processor=self.processor)
 
-        dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", None)
-        if dl_kwargs is None:
-            dl_kwargs = {
-                "batch_size": self.cfg.batch_size,
-                "num_workers": self.cfg.num_workers,
-                "shuffle": False,
-            }
-
-        # Ensure we don't shuffle in validation even if config says otherwise
-        dl_kwargs = {**dl_kwargs, "shuffle": False}
+        dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
+        dl_kwargs["shuffle"] = False  # No shuffling for validation
 
         return DataLoader(dataset, collate_fn=collate, **dl_kwargs)
