@@ -103,7 +103,9 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
     # Build annotation_ids aligned 1:1 with input_ids
     # annotation_ids will be a tensor: [batch_size, seq_len, max_regions]
     batch_size, seq_len = input_ids.shape
-    annotation_ids_lists: list[list[list[int]]] = [[[] for _ in range(seq_len)] for _ in range(batch_size)]
+    annotation_ids_lists: list[list[list[int]]] = [
+        [[] for _ in range(seq_len)] for _ in range(batch_size)
+    ]
 
     for i, caption in enumerate(captions_annotated):
         # Tokenize annotated caption to get per-token annotation ids (list of lists) in caption space
@@ -145,7 +147,9 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
     max_regions = max(max_regions, 1)  # Ensure at least 1
 
     # Create tensor and fill with -1 (padding)
-    annotation_ids = torch.full((batch_size, seq_len, max_regions), -1, dtype=torch.long)
+    annotation_ids = torch.full(
+        (batch_size, seq_len, max_regions), -1, dtype=torch.long
+    )
     for i in range(batch_size):
         for j in range(seq_len):
             ann_list = annotation_ids_lists[i][j]
