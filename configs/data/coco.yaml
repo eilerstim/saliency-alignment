@@ -1,33 +1,32 @@
 name: coco
-data_dir: ${oc.env:SCRATCH}/finetune/data/${name}
+data_dir: ${oc.env:SCRATCH}/finetune/data/${.name}
 seed: 42 # for reproducibility in data splits
 
 train:
   split: train
   name: train2017
-  save_dir: ${data_dir}/train/
+  save_dir: ${..data_dir}/train/
   url: http://images.cocodataset.org/zips/train2017.zip
 
 validation:
   split: validation
   name: val2017
-  save_dir: ${data_dir}/validation/
+  save_dir: ${..data_dir}/validation/
   url: http://images.cocodataset.org/zips/val2017.zip
 
 annotations:
   name: annotations
-  save_dir: ${data_dir}/annotations
+  save_dir: ${..data_dir}/annotations
   url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip 
-  ann_file: ${annotations.save_dir}/instances_{}.json
-  captions_file: ${annotations.save_dir}/captions_{}.json
+  ann_file: ${.save_dir}/instances_{}.json
+  captions_file: ${.save_dir}/captions_{}.json
 
 coconut:
-  masks_dir: ${data_dir}/panoptic_train2017_masks
-  captions_dir: ${data_dir}/panoptic_train2017_captions
-  ann_file: ${annotations.save_dir}/panoptic_train2017.json
+  masks_dir: ${..data_dir}/panoptic_train2017_masks
+  captions_dir: ${..data_dir}/panoptic_train2017_captions
+  ann_file: ${..annotations.save_dir}/panoptic_train2017.json
   captions_url: https://huggingface.co/datasets/xdeng77/coconut_pancap_50k/resolve/main/coconut_pancap_50k.tar?download=true
-  captions_tar_path: ${data_dir}/coconut_pancap_50k.tar
-
+  captions_tar_path: ${..data_dir}/coconut_pancap_50k.tar
 
 dataloader_kwargs:
   num_workers: 4
