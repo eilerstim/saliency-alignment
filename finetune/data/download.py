@@ -1,5 +1,6 @@
 import json
 import logging
+import shutil
 import tarfile
 import urllib.request
 import zipfile
@@ -53,6 +54,7 @@ def download_coco(data_cfg: DictConfig):
         logger.info(f"Extracting {name}...")
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(data_dir)
+        zip_path.unlink()
 
         logger.info(f"Successfully extracted {name}")
 
@@ -377,10 +379,20 @@ def download_coconut(data_cfg: DictConfig):
         or len(list(output_captions_dir.glob("*.txt"))) == 0
     ):
         logger.info(f"Extracting captions to {output_captions_dir}...")
-        output_captions_dir.mkdir(parents=True, exist_ok=True)
+
+        # Extract to data_dir
+        extract_root = Path(data_cfg.data_dir)
 
         with tarfile.open(captions_tar_path, "r") as tar:
-            tar.extractall(path=output_captions_dir)
+            tar.extractall(path=extract_root)
+        captions_tar_path.unlink()  # remove the tar file after extraction
+
+        # Rename the extracted folder
+        extracted_folder = extract_root / "coconut_pancap_50k"
+        if extracted_folder.exists():
+            if output_captions_dir.exists():
+                shutil.rmtree(output_captions_dir)
+            extracted_folder.rename(output_captions_dir)
 
         logger.info("Captions extracted successfully!")
     else:
