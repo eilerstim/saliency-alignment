@@ -14,9 +14,7 @@ class ZeroCriterion(Criterion):
         labels: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
-        annotation_ids: torch.Tensor,
         masks: torch.Tensor,
-        segment_infos: torch.Tensor,
         **kwargs: Any,
     ) -> float:
         return 0.0
