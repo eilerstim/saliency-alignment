@@ -1,6 +1,6 @@
 # Saliency Alignment
 
-This project finetunes Llava using a custom saliency loss.
+This project fine-tunes Vision-Language Models (VLMs) with custom saliency alignment losses. The framework trains models to better align their attention with semantic annotations in images, improving visual grounding capabilities.
 
 
 ## Installation
@@ -19,27 +19,30 @@ source .venv/bin/activate # Windows: .venv/Scripts/activate
 pip install -e .[dev]
 ```
 
-Once you have installed the dependencies, you can prepare the Pile dataset using the provided script:
+## Supported Models
 
-```bash
-uv run -m finetune.cli.prepare_data
-```
+The framework currently supports the following Vision-Language Models:
+- **LLaVA 1.5 7B** (`llava-hf/llava-1.5-7b-hf`)
+- **LLaVA v1.6 Mistral 7B** (`llava-hf/llava-v1.6-mistral-7b-hf`)
 
+Additional vision-language models can be easily added through the configuration system.
 
 ## Quick Start
 
-To finetune a Mamba model on the Pile dataset, you can use the provided script. Here is an example command to start finetuning:
+To fine-tune a model with the default configuration:
 
 ```bash
 uv run -m finetune
 ```
+
+The training script will automatically download and prepare the COCONut dataset on the first run.
 
 ## Configuration
 
 The finetuning process can be customized using the configuration files located in the `configs` directory. You can modify parameters such as learning rate, batch size, and even the model used for finetuning. This repository uses [Hydra](https://hydra.cc/) for configuration management, allowing for easy experimentation with different settings. Thus, you can override any configuration parameter directly from the command line. For example:
 
 ```bash
-uv run -m finetune trainer.lr=3e-5 model.name=moonshotai/Kimi-K2-Thinking
+uv run -m finetune model=llava-v1.6-mistral-7b-hf data.dataloader_kwargs.batch_size=4
 ```
 
 ## Logging and Monitoring
@@ -49,8 +52,15 @@ We use [Weights & Biases](https://wandb.ai/) for logging and monitoring the fine
 The project name for W&B logging can be set in the configuration file or overridden from the command line:
 
 ```bash
-uv run -m finetune wandb.project=finetune-mamba
+uv run -m finetune wandb.project=my-project-name
 ```
+
+## Dataset
+
+This repository uses the **COCONut dataset**, which combines COCO 2017 images with panoptic segmentation masks and detailed captions containing segment annotations.
+
+The framework supports a flexible dataset structure that allows models to learn from token-to-region alignments. All that is needed is a per-token mask indicating which image segments each token refers to.
+
 
 ## Defining a Custom Loss
 
@@ -74,29 +84,24 @@ A criterion takes as input the following parameters:
 - `masks (batch_size, H, W)`: Segmentation masks with pixel values as segment IDs.
 - `segments_infos (batch_size, max_segments, 2)`: (segment_id, category_id) pairs, padded with -1.
 
-## Dataset Structure
+## Data Directory Structure
 
-After running the download scripts, your data directory will have the following structure:
+After running the training script with the COCONut dataset for the first time, the data will be automatically downloaded and organized as follows:
 
 ```
-$SCRATCH/finetune/data/coco/
+$SCRATCH/saliency-alignment/data/coco/
 │
-├── train2017.zip                          # Downloaded COCO train images (temp)
-├── val2017.zip                            # Downloaded COCO val images (temp)
-├── annotations.zip                        # Downloaded COCO annotations (temp)
-├── coconut_pancap_50k.tar                # Downloaded COCONut captions archive (temp)
-│
-├── train2017/                             # Extracted from train2017.zip
+├── train/                                 # Training images
 │   ├── 000000000009.jpg
 │   ├── 000000000025.jpg
 │   └── ... (118,287 training images)
 │
-├── val2017/                               # Extracted from val2017.zip
+├── validation/                            # Validation images
 │   ├── 000000000139.jpg
 │   ├── 000000000285.jpg
 │   └── ... (5,000 validation images)
 │
-├── annotations/                           # Extracted from annotations.zip
+├── annotations/                           # COCO and COCONut annotations
 │   ├── instances_train2017.json          # COCO instance segmentation (train)
 │   ├── instances_val2017.json            # COCO instance segmentation (val)
 │   ├── captions_train2017.json           # COCO captions (train)
@@ -104,12 +109,11 @@ $SCRATCH/finetune/data/coco/
 │   ├── panoptic_train2017.json           # COCONut panoptic annotations
 │   └── ... (other COCO annotation files)
 │
-├── panoptic_train2017_masks/             # COCONut masks from HuggingFace
-│   ├── 000000000009.png                  # Panoptic segmentation masks
+├── panoptic_train2017_masks/             # Panoptic segmentation masks
+│   ├── 000000000009.png                  # From HuggingFace (xdeng77/coconut_s)
 │   ├── 000000000025.png
-│   └── ... (subset of COCO images with panoptic annotations)
+│   └── ... (~50K images with panoptic annotations)
 │
-└── panoptic_train2017_captions/          # Extracted from coconut_pancap_50k.tar
-    ├── <extracted caption files>
-    └── ... (caption data)
+└── panoptic_train2017_captions/          # Annotated captions
+    └── ... (caption files with segment annotations)
 ```
