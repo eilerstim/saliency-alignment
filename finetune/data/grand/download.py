@@ -5,6 +5,7 @@ import tarfile
 import urllib.request
 from pathlib import Path
 
+import hydra
 from huggingface_hub import snapshot_download
 from omegaconf import DictConfig
 from tqdm import tqdm
@@ -108,3 +109,11 @@ def download_grand(data_cfg: DictConfig) -> None:
 
     logger.info("GranD dataset download complete.")
     
+
+@hydra.main(version_base="1.3", config_path="/cluster/project/sachan/pmlr/saliency-alignment/configs/data/", config_name="grand")
+def main(cfg: DictConfig) -> None:
+    download_grand(cfg)
+
+
+if __name__ == "__main__":
+    main()
