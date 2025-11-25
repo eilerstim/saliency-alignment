@@ -6,9 +6,6 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
-from finetune.data.collators import eval_collate_fn, train_collate_fn
-from finetune.data.datasets import COCONutPanCapDataset
-
 
 class FineTuner(L.LightningModule):
     """Fine-tuning module for a pre-trained model."""
@@ -43,9 +40,7 @@ class FineTuner(L.LightningModule):
             labels=batch["labels"],
             preds=outputs.logits,
             attentions=outputs.attentions,
-            annotation_ids=batch.get("annotation_ids"),
             masks=batch.get("masks"),
-            segments_infos=batch.get("segments_infos"),
         )
 
         # Log relevant metrics
@@ -76,9 +71,7 @@ class FineTuner(L.LightningModule):
             labels=batch["labels"],
             preds=outputs.logits,
             attentions=outputs.attentions,
-            annotation_ids=batch.get("annotation_ids"),
             masks=batch.get("masks"),
-            segments_infos=batch.get("segments_infos"),
         )
 
         # Optionally ignore padding (-100) when computing accuracy
@@ -111,16 +104,24 @@ class FineTuner(L.LightningModule):
         return [optimizer], [scheduler]
 
     def train_dataloader(self) -> DataLoader:
-        dataset = COCONutPanCapDataset(self.cfg.data, split="train")
-        collate = partial(train_collate_fn, processor=self.processor)
+        # Instantiate dataset with split="train"
+        dataset = instantiate(self.cfg.data.dataset, split="train")
+        
+        # Get collator function and bind processor via partial
+        collate_fn = instantiate(self.cfg.data.collator)
+        collate = partial(collate_fn, processor=self.processor)
 
         dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)
         return DataLoader(dataset, collate_fn=collate, **dl_kwargs)
 
     def val_dataloader(self) -> DataLoader:
-        dataset = COCONutPanCapDataset(self.cfg.data, split="validation")
-        collate = partial(eval_collate_fn, processor=self.processor)
+        # Instantiate dataset with split="validation"
+        dataset = instantiate(self.cfg.data.dataset, split="validation")
+        
+        # Get eval collator function and bind processor via partial
+        collate_fn = instantiate(self.cfg.data.eval_collator)
+        collate = partial(collate_fn, processor=self.processor)
 
         dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)

@@ -33,25 +33,11 @@ class SaliencyAlignment(Criterion):
         labels: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
-        annotation_ids: torch.Tensor,
         masks: torch.Tensor,
-        segment_infos: torch.Tensor,
         **kwargs: Any,
     ) -> float:
-        # TODO assert annotations are as expected (i.e. aligned with caption tokens)
-        # Extract annotations
-        annotations = load_annotations(
-            annotation_ids, masks
-        )  # (batch_size, seq_len, H, W)
-
-        # Mask out non-annotated tokens
-        annotated = (annotation_ids != -1).any(dim=2)  # (batch_size, seq_len)
-
-        # Return zero loss if no tokens are annotated
-        if not annotated.any():
-            return 0.0
-
         # Compute saliency maps for annotated tokens
+        pass
 
 
 # TODO: Move to utils

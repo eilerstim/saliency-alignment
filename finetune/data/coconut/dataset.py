@@ -7,121 +7,12 @@ import numpy as np
 import torch
 from omegaconf import DictConfig
 from PIL import Image
-from pycocotools.coco import COCO
 from torch.utils.data import Dataset
 
-from finetune.data.download import download_coco, download_coconut
+from finetune.data.coco.download import download_coco
+from finetune.data.coconut.download import download_coconut
 
 logger = logging.getLogger(__name__)
-
-
-class COCODataset(Dataset):
-    """PyTorch Dataset for COCO segmentation with captions.
-
-    Loads COCO images with corresponding segmentation masks and captions. Masks are
-    created by merging all object instances, with each pixel labeled by its category ID.
-
-    Attributes:
-        data_cfg: Data configuration containing paths and settings.
-        split: Dataset split, either "train" or "validation".
-        root_dir: Path to the directory containing images.
-        coco: COCO API instance for segmentation annotations.
-        captions: COCO API instance for caption annotations.
-        ids: List of image IDs in the dataset.
-        target_size: Target size (height, width) for resizing images and masks.
-    """
-
-    def __init__(
-        self,
-        data_cfg: DictConfig,
-        split: Literal["train", "validation"],
-        target_size: tuple[int, int] = (1024, 1024),
-    ):
-        """Initialize the COCO segmentation dataset.
-
-        Args:
-            data_cfg: Configuration containing data directory and annotation file paths.
-            split: Dataset split to load, either "train" or "validation".
-            target_size: Tuple of (height, width) to resize images and masks. Defaults to (1024, 1024).
-        """
-        download_coco(data_cfg)
-
-        self.data_cfg = data_cfg
-        self.split = split
-
-        # Build paths based on split
-        ann_file = data_cfg.annotations.ann_file.format(data_cfg[split].name)
-        captions_file = data_cfg.annotations.captions_file.format(data_cfg[split].name)
-
-        self.root_dir = Path(data_cfg.data_dir) / data_cfg[split].name
-        self.coco = COCO(ann_file)
-        self.captions = COCO(captions_file)
-        self.ids = list(self.coco.imgs.keys())
-        self.target_size = target_size
-
-    def __len__(self):
-        """Return the total number of images in the dataset.
-
-        Returns:
-            Number of images in the dataset.
-        """
-        return len(self.ids)
-
-    def __getitem__(self, idx: int) -> dict:
-        """Load and return a single sample from the dataset.
-
-        Loads an image, creates a merged segmentation mask with category IDs, and retrieves
-        all associated captions. Images and masks are resized to the target size.
-
-        Args:
-            idx: Index of the sample to retrieve.
-
-        Returns:
-            Dictionary containing:
-                - image: PIL Image
-                - mask: Long tensor of shape (H, W) with category IDs for each pixel.
-                - caption_texts: List of caption strings for this image.
-        """
-        img_id = self.ids[idx]
-        img_info = self.coco.loadImgs(img_id)[0]
-        image_path = self.root_dir / img_info["file_name"]
-
-        # Load image
-        image = Image.open(image_path).convert("RGB")
-
-        # Get segmentation mask for this image
-        ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        anns = self.coco.loadAnns(ann_ids)
-        mask = np.zeros((img_info["height"], img_info["width"]))
-
-        # Merge all object masks
-        # Each object gets its own category id in the mask
-        for ann in anns:
-            if "segmentation" in ann:
-                current_mask = self.coco.annToMask(ann)
-                mask = np.maximum(mask, current_mask * ann["category_id"])
-
-        # Resize image and mask (to the same size)
-        image = image.resize(self.target_size, Image.BILINEAR)
-        mask = Image.fromarray(mask.astype(np.uint8)).resize(
-            self.target_size, Image.NEAREST
-        )
-        mask = np.array(mask)
-
-        # Convert mask to tensor
-        mask = torch.from_numpy(mask).long()
-
-        # Get all captions
-        captions_ids = self.captions.getAnnIds(imgIds=img_id)
-        captions_anns = self.captions.loadAnns(captions_ids)
-        caption_texts = [ann["caption"] for ann in captions_anns]
-
-        return {
-            "image": image,
-            "mask": mask,
-            "captions": caption_texts,
-        }
-
 
 class COCONutPanCapDataset(Dataset):
     """PyTorch Dataset for COCONut panoptic segmentation with captions.
@@ -282,3 +173,4 @@ class COCONutPanCapDataset(Dataset):
             "caption": caption_text,
             "segments_info": segments_info,
         }
+

@@ -1,7 +1,7 @@
 import torch
 from transformers import ProcessorMixin
 
-from finetune.data.tokenization import (
+from finetune.data.coconut.tokenization import (
     parse_annotated_caption,
     tokenize_with_annotations,
 )
@@ -29,11 +29,7 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
             - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
-            - annotation_ids (torch.Tensor): Tensor of shape [batch_size, seq_len, max_regions]
-              where each token has region IDs it refers to (0 for padding/non-annotated tokens)
-            - masks (torch.Tensor): Stacked segmentation masks [batch_size, height, width]
-            - segments_infos (torch.Tensor): Tensor of shape [batch_size, max_segments, 2]
-              containing (segment_id, category_id) pairs, padded with -1
+            - masks (torch.Tensor): Per-token annotation masks of shape [batch_size, seq_len, height, width]
 
     Note:
         The function creates clean captions by removing <id: text> markers before
@@ -101,7 +97,6 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
     # Build annotation_ids aligned 1:1 with input_ids
-    # annotation_ids will be a tensor: [batch_size, seq_len, max_regions]
     batch_size, seq_len = input_ids.shape
     annotation_ids_lists: list[list[list[int]]] = [
         [[] for _ in range(seq_len)] for _ in range(batch_size)
@@ -133,66 +128,38 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
             if caption_start + j < seq_len:
                 annotation_ids_lists[i][caption_start + j] = ann_id_list.copy()
 
-    # Convert annotation_ids to tensor
-    # Find max number of regions per token across the batch
-    max_regions = (
-        max(
-            len(ann_list)
-            for batch_item in annotation_ids_lists
-            for ann_list in batch_item
-        )
-        if any(annotation_ids_lists)
-        else 1
-    )
-    max_regions = max(max_regions, 1)  # Ensure at least 1
-
-    # Create tensor and fill with -1 (padding)
-    annotation_ids = torch.full(
-        (batch_size, seq_len, max_regions), -1, dtype=torch.long
-    )
-    for i in range(batch_size):
-        for j in range(seq_len):
-            ann_list = annotation_ids_lists[i][j]
-            if ann_list:
-                annotation_ids[i, j, : len(ann_list)] = torch.tensor(
-                    ann_list, dtype=torch.long
-                )
-
-    # Convert segments_infos to tensor
-    # Find max number of segments across the batch
-    max_segments = max(len(si) for si in segments_infos) if segments_infos else 1
-    max_segments = max(max_segments, 1)  # Ensure at least 1
-
-    # Create tensor and fill with -1 (padding)
-    segments_infos_tensor = torch.full(
-        (batch_size, max_segments, 2), -1, dtype=torch.long
-    )
-    for i, seg_info in enumerate(segments_infos):
-        if seg_info:
-            segments_infos_tensor[i, : len(seg_info)] = torch.tensor(
-                seg_info, dtype=torch.long
-            )
-    segments_infos = segments_infos_tensor
-
     # Stack masks into a batch tensor
     masks = torch.stack(masks)
+
+    # Create per-token annotation masks [batch_size, seq_len, H, W]
+    batch_size, seq_len = input_ids.shape
+    height, width = masks.shape[-2:]
+
+    annotation_masks = torch.zeros((batch_size, seq_len, height, width))
+
+    for i in range(batch_size):
+        img_mask = masks[i]
+        for j, ann_ids in enumerate(annotation_ids_lists[i]):
+            if ann_ids:
+                token_mask = torch.zeros_like(img_mask, dtype=torch.bool)
+                for ann_id in ann_ids:
+                    token_mask |= (img_mask == ann_id)
+                annotation_masks[i, j] = token_mask.float()
+
+    # Segment infos left out for now, can be added if needed
 
     batch["input_ids"] = input_ids
     batch["attention_mask"] = attention_mask
     batch["pixel_values"] = pixel_values
     batch["labels"] = labels
-    batch["annotation_ids"] = annotation_ids
-    batch["masks"] = masks
-    batch["segments_infos"] = segments_infos
+    batch["masks"] = annotation_masks
 
     return (
         input_ids,
         attention_mask,
         pixel_values,
         labels,
-        annotation_ids,
-        masks,
-        segments_infos,
+        annotation_masks,
     )
 
 
