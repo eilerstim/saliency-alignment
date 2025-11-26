@@ -9,7 +9,6 @@ from omegaconf import DictConfig
 from PIL import Image
 from torch.utils.data import Dataset
 
-from finetune.data.coco.download import download_coco
 from finetune.data.coconut.download import download_coconut
 
 logger = logging.getLogger(__name__)
