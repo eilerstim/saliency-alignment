@@ -44,7 +44,6 @@ class COCONutPanCapDataset(Dataset):
             data_cfg: Configuration containing data directory and annotation file paths.
             split: Dataset split to load, either "train" or "validation".
         """
-        download_coco(data_cfg)
         download_coconut(data_cfg)
 
         self.data_cfg = data_cfg
