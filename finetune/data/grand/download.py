@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 def download_grand(data_cfg: DictConfig) -> None:
     """Download the GranD dataset into the specified directory.
 
+    # TODO: Fix if needed, currently downloads the whole dataset which is too much
+
     Args:
         data_cfg: Configuration containing data directory path and download URLs.
     """
