@@ -14,6 +14,7 @@ from finetune.data.coconut.download import download_coconut
 
 logger = logging.getLogger(__name__)
 
+
 class COCONutPanCapDataset(Dataset):
     """PyTorch Dataset for COCONut panoptic segmentation with captions.
 
@@ -173,4 +174,3 @@ class COCONutPanCapDataset(Dataset):
             "caption": caption_text,
             "segments_info": segments_info,
         }
-

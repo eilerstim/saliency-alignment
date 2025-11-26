@@ -38,6 +38,7 @@ class FineTuner(L.LightningModule):
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
+            input_ids=batch["input_ids"],
             preds=outputs.logits,
             attentions=outputs.attentions,
             masks=batch.get("masks"),
@@ -69,6 +70,7 @@ class FineTuner(L.LightningModule):
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
+            input_ids=batch["input_ids"],
             preds=outputs.logits,
             attentions=outputs.attentions,
             masks=batch.get("masks"),
@@ -105,8 +107,8 @@ class FineTuner(L.LightningModule):
 
     def train_dataloader(self) -> DataLoader:
         # Instantiate dataset with split="train"
-        dataset = instantiate(self.cfg.data.dataset, split="train")
-        
+        dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
+
         # Get collator function and bind processor via partial
         collate_fn = instantiate(self.cfg.data.collator)
         collate = partial(collate_fn, processor=self.processor)
@@ -117,8 +119,8 @@ class FineTuner(L.LightningModule):
 
     def val_dataloader(self) -> DataLoader:
         # Instantiate dataset with split="validation"
-        dataset = instantiate(self.cfg.data.dataset, split="validation")
-        
+        dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
+
         # Get eval collator function and bind processor via partial
         collate_fn = instantiate(self.cfg.data.eval_collator)
         collate = partial(collate_fn, processor=self.processor)

@@ -21,6 +21,13 @@ dev = [
     "ruff>=0.14.4",
 ]
 
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["finetune"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]  # basics: style, flakes, isort, pyupgrade, bugbear
 ignore = ["E501"]                    # let the formatter handle wrapping

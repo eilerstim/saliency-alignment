@@ -143,7 +143,7 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
             if ann_ids:
                 token_mask = torch.zeros_like(img_mask, dtype=torch.bool)
                 for ann_id in ann_ids:
-                    token_mask |= (img_mask == ann_id)
+                    token_mask |= img_mask == ann_id
                 annotation_masks[i, j] = token_mask.float()
 
     # Segment infos left out for now, can be added if needed

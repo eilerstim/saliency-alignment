@@ -2,9 +2,9 @@ from collections.abc import Sequence
 from typing import Any
 
 import torch
-from vl_saliency import Trace
 
 from finetune.criterion import Criterion
+from finetune.criterion.utils import trace_attentions
 
 
 # TODO:
@@ -20,30 +20,34 @@ class SaliencyAlignment(Criterion):
     saliency maps and the provided annotation.
     """
 
-    def __init__(self, weight: float = 1.0):
+    def __init__(self, weight: float = 1.0, image_token_id: int = 1) -> None:
         """
         Args:
             weight (float): Weight for the saliency alignment loss.
             image_token_id (int): Token ID representing the image token in the input.
         """
         super().__init__(weight)
+        self.image_token_id = image_token_id
 
     def compute_loss(
         self,
         labels: torch.Tensor,
+        input_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
         masks: torch.Tensor,
         **kwargs: Any,
     ) -> float:
-        # Compute saliency maps for annotated tokens
-        pass
+        # Extract attention traces for image tokens
+        traces = trace_attentions(
+            input_ids=input_ids,
+            attentions=attentions,
+            image_token_id=self.image_token_id,
+            image_shapes=[mask.shape[-2:] for mask in masks],
+        )
 
+        # tokens
+        # for b, trace in enumerate(traces):
+        #     _, _, gen_len, h, w = trace.attns[0].shape
 
-# TODO: Move to utils
-def trace_attentions(
-    attentions: Sequence[torch.Tensor],
-    image_tokens: torch.Tensor,  # (batch_size, num_image_tokens)
-    annotated_tokens: torch.Tensor,  # (batch_size, num_annotated_tokens)
-) -> list[Trace]:
-    pass
+        #     for i in range()

@@ -1,4 +1,5 @@
 """Download script for the GranD dataset."""
+
 import csv
 import logging
 import tarfile
@@ -40,14 +41,14 @@ def download_grand(data_cfg: DictConfig) -> None:
 
     # 1. Download the repository (metadata and links)
     repo_id = data_cfg.grand.repo_id
-    
+
     logger.info(f"Downloading GranD repository from {repo_id}...")
     try:
         snapshot_download(
-            repo_id=repo_id, 
-            repo_type="dataset", 
+            repo_id=repo_id,
+            repo_type="dataset",
             local_dir=repo_dir,
-            local_dir_use_symlinks=False
+            local_dir_use_symlinks=False,
         )
     except Exception as e:
         logger.error(f"Failed to download repository: {e}")
@@ -55,7 +56,7 @@ def download_grand(data_cfg: DictConfig) -> None:
 
     # 2. Download the image links file
     image_list_url = data_cfg.grand.image_list_url
-    
+
     logger.info(f"Downloading image links from {image_list_url}...")
     try:
         urllib.request.urlretrieve(image_list_url, links_file)
@@ -68,21 +69,21 @@ def download_grand(data_cfg: DictConfig) -> None:
     # 3. Download and extract images
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(links_file, "r", encoding="utf-8") as f:
+    with open(links_file, encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
-        
+
         rows = list(reader)
-        
+
         for row in tqdm(rows, desc="Downloading and extracting images"):
             file_name = row.get("file_name")
             url = row.get("cdn_link")
-            
+
             if not file_name or not url:
                 continue
 
             tar_path = images_dir / file_name
             marker_path = images_dir / f".{file_name}.done"
-            
+
             if marker_path.exists():
                 continue
 
@@ -92,25 +93,29 @@ def download_grand(data_cfg: DictConfig) -> None:
                 except Exception as e:
                     logger.error(f"Failed to download {url}: {e}")
                     continue
-            
+
             # Extract
             try:
                 with tarfile.open(tar_path, "r") as tar:
                     tar.extractall(path=images_dir)
-                
+
                 # Create marker
                 marker_path.touch()
-                
+
                 # Remove tar
                 tar_path.unlink()
-                
+
             except Exception as e:
                 logger.error(f"Failed to extract {tar_path}: {e}")
 
     logger.info("GranD dataset download complete.")
-    
 
-@hydra.main(version_base="1.3", config_path="/cluster/project/sachan/pmlr/saliency-alignment/configs/data/", config_name="grand")
+
+@hydra.main(
+    version_base="1.3",
+    config_path="/cluster/project/sachan/pmlr/saliency-alignment/configs/data/",
+    config_name="grand",
+)
 def main(cfg: DictConfig) -> None:
     download_grand(cfg)
 

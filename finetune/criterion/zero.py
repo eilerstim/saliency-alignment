@@ -12,6 +12,7 @@ class ZeroCriterion(Criterion):
     def compute_loss(
         self,
         labels: torch.Tensor,
+        input_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
         masks: torch.Tensor,

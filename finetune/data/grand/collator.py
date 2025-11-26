@@ -159,11 +159,13 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
                     resized = F.interpolate(
                         token_mask_float,
                         size=(target_height, target_width),
-                        mode='bilinear',
-                        align_corners=False
+                        mode="bilinear",
+                        align_corners=False,
                     )
                     # Threshold back to binary and remove extra dims
-                    annotation_masks[i, j] = (resized.squeeze(0).squeeze(0) > 0.5).float()
+                    annotation_masks[i, j] = (
+                        resized.squeeze(0).squeeze(0) > 0.5
+                    ).float()
                 else:
                     annotation_masks[i, j] = token_mask.float()
 
@@ -248,4 +250,11 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
     attention_mask = batch["attention_mask"]
     pixel_values = batch["pixel_values"]
 
-    return input_ids, attention_mask, pixel_values, answers, rle_masks_list, phrase_positions_list
+    return (
+        input_ids,
+        attention_mask,
+        pixel_values,
+        answers,
+        rle_masks_list,
+        phrase_positions_list,
+    )

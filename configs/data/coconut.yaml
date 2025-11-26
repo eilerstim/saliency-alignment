@@ -1,19 +1,18 @@
-name: coco
+name: coconut
 data_dir: ${oc.env:SCRATCH}/saliency-alignment/data/${.name}
 seed: 42 # for reproducibility in data splits
 
 # Dataset configuration
 dataset:
-  _target_: finetune.data.coconut.COCONutPanCapDataset
-  data_cfg: ${..}  # Pass the entire data config
+  _target_: finetune.data.coconut.dataset.COCONutPanCapDataset
 
 # Collator configuration  
 collator:
-  _target_: finetune.data.coconut.train_collate_fn
+  _target_: finetune.data.coconut.collator.train_collate_fn
   # processor will be passed at runtime via partial
 
 eval_collator:
-  _target_: finetune.data.coconut.eval_collate_fn
+  _target_: finetune.data.coconut.collator.eval_collate_fn
   # processor will be passed at runtime via partial
 
 train:

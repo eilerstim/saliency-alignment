@@ -64,7 +64,9 @@ class GranDDataset(Dataset):
                 self.image_files.append(img_file)
                 self.annotation_files.append(json_file)
 
-        logger.info(f"Found {len(self.image_files)} image-annotation pairs in GranD dataset")
+        logger.info(
+            f"Found {len(self.image_files)} image-annotation pairs in GranD dataset"
+        )
 
         # Deterministic 90/10 split via index sampling with a fixed seed
         n_total = len(self.image_files)
@@ -77,11 +79,19 @@ class GranDDataset(Dataset):
         train_idx = set(perm[:n_train])
 
         if split == "train":
-            self.image_files = [self.image_files[i] for i in range(n_total) if i in train_idx]
-            self.annotation_files = [self.annotation_files[i] for i in range(n_total) if i in train_idx]
+            self.image_files = [
+                self.image_files[i] for i in range(n_total) if i in train_idx
+            ]
+            self.annotation_files = [
+                self.annotation_files[i] for i in range(n_total) if i in train_idx
+            ]
         else:  # "validation"
-            self.image_files = [self.image_files[i] for i in range(n_total) if i not in train_idx]
-            self.annotation_files = [self.annotation_files[i] for i in range(n_total) if i not in train_idx]
+            self.image_files = [
+                self.image_files[i] for i in range(n_total) if i not in train_idx
+            ]
+            self.annotation_files = [
+                self.annotation_files[i] for i in range(n_total) if i not in train_idx
+            ]
 
         logger.info(f"GranD {split} split has {len(self.image_files)} images")
 
@@ -148,7 +158,7 @@ class GranDDataset(Dataset):
         image = Image.open(image_path).convert("RGB")
 
         # Load annotation
-        with open(annotation_path, "r") as f:
+        with open(annotation_path) as f:
             annotation_data = json.load(f)
 
         # Get image key (filename)

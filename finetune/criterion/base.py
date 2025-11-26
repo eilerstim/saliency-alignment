@@ -39,6 +39,7 @@ class Criterion(ABC):
     def compute_loss(
         self,
         labels: torch.Tensor,
+        input_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
         masks: torch.Tensor,
@@ -48,9 +49,10 @@ class Criterion(ABC):
 
         Args:
             labels (torch.Tensor): Ground truth labels.  [batch_size, seq_len]
+            input_ids (torch.Tensor): Input token IDs. [batch_size, seq_len]
             preds (torch.Tensor): The model prediction logits. [batch_size, seq_len, vocab_size]
             attentions (Sequence[torch.Tensor]): The attention weights from the model. [List of tensors with shape [batch_size, num_heads, seq_len, seq_len]]
-            masks (torch.Tensor): Segmentation masks with pixel values as segment IDs. [batch_size, seq_len, H, W]
+            masks (torch.Tensor): Binary annotation masks. [batch_size, seq_len, H, W]. Zero tensors indicate no annotation.
             **kwargs (Any): Additional keyword arguments
 
         Returns:
