@@ -25,7 +25,9 @@ def trace_attentions(
 
     # Extract image token positions
     mask = input_ids == image_token_id  # (batch_size, seq_len)
-    image_tokens_per_sample = [row[row_mask] for row, row_mask in zip(input_ids, mask)]
+    image_tokens_per_sample = [
+        row[row_mask] for row, row_mask in zip(input_ids, mask, strict=True)
+    ]
 
     # Get generated token positions
     image_ends = (mask.size(1) - 1) - mask.flip(1).float().argmax(dim=1)
