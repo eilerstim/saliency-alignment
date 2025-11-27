@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 from PIL import Image
 from torch.utils.data import Dataset
 
-from finetune.data.coconut.download import download_coconut
+from finetune.data.coconut.download import download_coconut, download_coco
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ class COCONutPanCapDataset(Dataset):
             data_cfg: Configuration containing data directory and annotation file paths.
             split: Dataset split to load, either "train" or "validation".
         """
+        download_coco(data_cfg)
         download_coconut(data_cfg)
 
         self.data_cfg = data_cfg
