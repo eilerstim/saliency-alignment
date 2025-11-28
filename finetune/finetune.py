@@ -32,6 +32,10 @@ def finetune(cfg: DictConfig):
     # Instantiate model and processor
     model = AutoModelForImageTextToText.from_pretrained(cfg.model.name)
     processor = AutoProcessor.from_pretrained(cfg.model.name)
+    
+    # Prepare model for training
+    model.train()
+    model.gradient_checkpointing_enable()
 
     # Prepare callbacks
     callbacks = [
