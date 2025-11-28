@@ -23,15 +23,19 @@ class Criterion(ABC):
     def __call__(
         self,
         labels: torch.Tensor,
+        input_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
-        annotation_ids: torch.Tensor,
-        masks: torch.Tensor,
-        segment_infos: torch.Tensor,
+        masks: list[torch.Tensor],
         **kwargs: Any,
     ) -> float:
         loss = self.compute_loss(
-            labels, preds, attentions, annotation_ids, masks, segment_infos, **kwargs
+            labels=labels,
+            input_ids=input_ids,
+            preds=preds,
+            attentions=attentions,
+            masks=masks,
+            **kwargs,
         )
         return self.weight * loss
 
@@ -42,7 +46,7 @@ class Criterion(ABC):
         input_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
-        masks: torch.Tensor,
+        masks: list[torch.Tensor],
         **kwargs: Any,
     ) -> float:
         """Compute the auxiliary loss.
@@ -52,7 +56,7 @@ class Criterion(ABC):
             input_ids (torch.Tensor): Input token IDs. [batch_size, seq_len]
             preds (torch.Tensor): The model prediction logits. [batch_size, seq_len, vocab_size]
             attentions (Sequence[torch.Tensor]): The attention weights from the model. [List of tensors with shape [batch_size, num_heads, seq_len, seq_len]]
-            masks (torch.Tensor): Binary annotation masks. [batch_size, seq_len, H, W]. Zero tensors indicate no annotation.
+            masks (list[torch.Tensor]): Binary annotation masks. List of [seq_len, H, W]. Zero tensors indicate no annotation.
             **kwargs (Any): Additional keyword arguments
 
         Returns:

@@ -15,7 +15,7 @@ class ZeroCriterion(Criterion):
         input_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
-        masks: torch.Tensor,
+        masks: list[torch.Tensor],
         **kwargs: Any,
     ) -> float:
         return 0.0

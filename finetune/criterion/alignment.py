@@ -35,7 +35,7 @@ class SaliencyAlignment(Criterion):
         input_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
-        masks: torch.Tensor,
+        masks: list[torch.Tensor],
         **kwargs: Any,
     ) -> float:
         # Extract attention traces for image tokens
@@ -49,7 +49,9 @@ class SaliencyAlignment(Criterion):
         # Compute saliency alignment loss
         scores = total = 0.0
         for b, trace in enumerate(traces):
-            _, _, gen_len, h, w = trace.attns[0].shape
+            # Get annotation masks for the current batch item
+            annotations = masks[b]  # (gen_len, H, W)
+            gen_len, h, w = annotations.shape
 
             # Saliency map computation pipeline
             pipe = (
@@ -60,14 +62,13 @@ class SaliencyAlignment(Criterion):
             )
 
             for i in range(gen_len):
-                annotation = masks[b, i]  # (H, W)
-                if annotation.sum() == 0:
+                if annotations[i].sum() == 0:
                     continue
 
                 saliency_map = trace.map(token=i) >> pipe  # (H, W)
 
                 # Compute alignment loss
-                loss = F.mse_loss(saliency_map, annotation.float())
+                loss = F.mse_loss(saliency_map, annotations[i])
 
                 scores += loss.item()
                 total += 1

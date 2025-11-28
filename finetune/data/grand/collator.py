@@ -4,7 +4,7 @@ from pycocotools import mask as maskUtils
 from transformers import ProcessorMixin
 
 
-def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
+def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     """Collate function for training with phrase-based token-to-region mapping.
 
     This function processes a batch of examples from the GranD dataset, tokenizing
@@ -169,22 +169,16 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
                 else:
                     annotation_masks[i, j] = token_mask.float()
 
-    batch["input_ids"] = input_ids
-    batch["attention_mask"] = attention_mask
-    batch["pixel_values"] = pixel_values
-    batch["labels"] = labels
-    batch["masks"] = annotation_masks
-
-    return (
-        input_ids,
-        attention_mask,
-        pixel_values,
-        labels,
-        annotation_masks,
-    )
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "pixel_values": pixel_values,
+        "labels": labels,
+        "masks": annotation_masks,
+    }
 
 
-def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
+def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     """Collate function for evaluation and inference.
 
     This function processes a batch of examples for evaluation by feeding only
@@ -246,15 +240,11 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
 
     batch = processor(text=texts, images=images, return_tensors="pt", padding=True)
 
-    input_ids = batch["input_ids"]
-    attention_mask = batch["attention_mask"]
-    pixel_values = batch["pixel_values"]
-
-    return (
-        input_ids,
-        attention_mask,
-        pixel_values,
-        answers,
-        rle_masks_list,
-        phrase_positions_list,
-    )
+    return {
+        "input_ids": batch["input_ids"],
+        "attention_mask": batch["attention_mask"],
+        "pixel_values": batch["pixel_values"],
+        "answers": answers,
+        "rle_masks_list": rle_masks_list,
+        "phrase_positions_list": phrase_positions_list,
+    }

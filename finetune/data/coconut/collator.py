@@ -7,7 +7,7 @@ from finetune.data.coconut.tokenization import (
 )
 
 
-def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
+def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     """Collate function for training with annotation-aware tokenization.
 
     This function processes a batch of examples from the COCONut dataset, creating
@@ -29,7 +29,7 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
             - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
-            - masks (torch.Tensor): Per-token annotation masks of shape [batch_size, seq_len, height, width]
+            - masks (list of torch.Tensor): Per-token annotation masks of shape [seq_len, height, width]
 
     Note:
         The function creates clean captions by removing <id: text> markers before
@@ -128,42 +128,31 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin):
             if caption_start + j < seq_len:
                 annotation_ids_lists[i][caption_start + j] = ann_id_list.copy()
 
-    # Stack masks into a batch tensor
-    masks = torch.stack(masks)
-
     # Create per-token annotation masks [batch_size, seq_len, H, W]
     batch_size, seq_len = input_ids.shape
-    height, width = masks.shape[-2:]
 
-    annotation_masks = torch.zeros((batch_size, seq_len, height, width))
-
-    for i in range(batch_size):
-        img_mask = masks[i]
+    # Create annotation masks for each token (list of (seq_len, H, W) tensors)
+    annotation_masks = []
+    for i, img_mask in enumerate(masks):
+        height, width = img_mask.shape[-2:]
+        annotation_masks.append(torch.zeros((seq_len, height, width), dtype=torch.bool))
         for j, ann_ids in enumerate(annotation_ids_lists[i]):
-            if ann_ids:
-                token_mask = torch.zeros_like(img_mask, dtype=torch.bool)
-                for ann_id in ann_ids:
-                    token_mask |= img_mask == ann_id
-                annotation_masks[i, j] = token_mask.float()
+            token_mask = annotation_masks[i][j]
+            for ann_id in ann_ids:
+                token_mask |= img_mask == ann_id
+        annotation_masks[i] = annotation_masks[i].float()
 
     # Segment infos left out for now, can be added if needed
-
-    batch["input_ids"] = input_ids
-    batch["attention_mask"] = attention_mask
-    batch["pixel_values"] = pixel_values
-    batch["labels"] = labels
-    batch["masks"] = annotation_masks
-
-    return (
-        input_ids,
-        attention_mask,
-        pixel_values,
-        labels,
-        annotation_masks,
-    )
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "pixel_values": pixel_values,
+        "labels": labels,
+        "masks": annotation_masks,
+    }
 
 
-def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
+def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     """Collate function for evaluation and inference.
 
     This function processes a batch of examples for evaluation by feeding only
@@ -185,7 +174,7 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
             - attention_mask (torch.Tensor): Attention mask [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - answers (list): List of ground truth caption strings
-            - masks (torch.Tensor): Stacked segmentation masks [batch_size, height, width]
+            - masks (list of torch.Tensor): Per-token annotation masks of shape [seq_len, height, width]
             - segments_infos (torch.Tensor): Tensor of shape [batch_size, max_segments, 2]
               containing (segment_id, category_id) pairs, padded with -1
 
@@ -228,9 +217,10 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
     input_ids = batch["input_ids"]
     attention_mask = batch["attention_mask"]
     pixel_values = batch["pixel_values"]
-
-    # Stack masks into a batch tensor
-    masks = torch.stack(masks)
+    
+    # Labels: ignore padding tokens
+    labels = input_ids.clone()
+    labels[labels == processor.tokenizer.pad_token_id] = -100
 
     # Convert segments_infos to tensor
     # Find max number of segments across the batch
@@ -249,4 +239,12 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin):
             )
     segments_infos = segments_infos_tensor
 
-    return input_ids, attention_mask, pixel_values, answers, masks, segments_infos
+    return {
+        "input_ids": input_ids,
+        "labels": labels,
+        "attention_mask": attention_mask,
+        "pixel_values": pixel_values,
+        "answers": answers,
+        "masks": masks,
+        "segments_infos": segments_infos,
+    }

@@ -1,5 +1,3 @@
-from functools import partial
-
 import lightning as L
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -24,6 +22,7 @@ class FineTuner(L.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int):
         # Only pass model-relevant inputs to the backbone
+
         model_batch = {
             "input_ids": batch["input_ids"],
             "attention_mask": batch["attention_mask"],
@@ -110,23 +109,25 @@ class FineTuner(L.LightningModule):
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
 
         # Get collator function and bind processor via partial
-        collate_fn = instantiate(self.cfg.data.collator)
-        collate = partial(collate_fn, processor=self.processor)
+        collate_fn = instantiate(
+            self.cfg.data.collator, processor=self.processor, _partial_=True
+        )
 
         dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)
-        return DataLoader(dataset, collate_fn=collate, **dl_kwargs)
+        return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
 
     def val_dataloader(self) -> DataLoader:
         # Instantiate dataset with split="validation"
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
 
         # Get eval collator function and bind processor via partial
-        collate_fn = instantiate(self.cfg.data.eval_collator)
-        collate = partial(collate_fn, processor=self.processor)
+        collate_fn = instantiate(
+            self.cfg.data.eval_collator, processor=self.processor, _partial_=True
+        )
 
         dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)
         dl_kwargs["shuffle"] = False  # No shuffling for validation
 
-        return DataLoader(dataset, collate_fn=collate, **dl_kwargs)
+        return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
