@@ -31,6 +31,17 @@ def download_grand(data_cfg: DictConfig) -> None:
 
     data_path.mkdir(parents=True, exist_ok=True)
 
+    # Check if dataset is already downloaded
+    if (
+        data_path.exists()
+        and images_dir.exists()
+        and len(list(images_dir.glob("*.png"))) > 0
+        and annotations_dir.exists()
+        and len(list(annotations_dir.glob("*.json"))) > 0
+    ):
+        logger.info(f"Some non-zero number of images and annotations already exist at {data_cfg.data_dir}. Skipping download.")
+        return
+
     # 1. Setup
     repo_id = data_cfg.grand.repo_id
 
