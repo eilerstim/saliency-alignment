@@ -7,3 +7,5 @@ grand:
   image_list_url: "https://scontent-zrh1-1.xx.fbcdn.net/m1/v/t6/An9vTI997KnmODvqZkW-0R9C27JVUVNLaefaZpDjhEwAzbDA1ilmLfueLrFK2kHB_AbDCH0PX7Grost1cIkRPt72ZRddEip9deVqOdZTc4wNOPaFlgM13Q.txt?_nc_gid=OPjjE3TxkSX7S8ZtMqCT5g&_nc_oc=AdlpjNIS81eprh062zIU0TOqrYCjvm3dIHWLTKGZYmdu7fsulkKkHogSDHQ9xkW4bSVUFLppzDqCgriqrZJPm8E6&ccb=10-5&oh=00_Afihhx1W--PPsTJ6M8TZ6JgDwExP7bWfCCpZC18xjPacgw&oe=694CF1CB&_nc_sid=0fdd51"
   image_links_file: ${..data_dir}/image_links.txt
   images_dir: ${..data_dir}/images
+  annotations_dir: ${..data_dir}/annotations
+  max_image_archives: 5

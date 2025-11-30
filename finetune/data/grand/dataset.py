@@ -48,7 +48,7 @@ class GranDDataset(Dataset):
 
         # Build paths
         self.images_dir = Path(data_cfg.grand.images_dir)
-        self.annotations_dir = Path(data_cfg.grand.repo_dir)
+        self.annotations_dir = Path(data_cfg.grand.annotations_dir)
 
         # Find all annotation files and corresponding images
         # Iterate through JSON files since there are more images than annotations
