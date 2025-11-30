@@ -6,6 +6,7 @@
 #SBATCH --tmp=64G
 #SBATCH --gpus-per-node=4
 #SBATCH --nodes=1
+#SBATCH --mem-per-cpu=64G
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpumem:64g
 #SBATCH --mail-type=END,FAIL
