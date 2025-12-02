@@ -2,6 +2,7 @@ import logging
 
 import hydra
 import lightning as L
+import torch
 from hydra.core.hydra_config import HydraConfig
 from lightning.pytorch.callbacks import (
     DeviceStatsMonitor,
@@ -28,11 +29,14 @@ def finetune(cfg: DictConfig):
 
     # Set seed for reproducibility
     L.seed_everything(cfg.seed)
+    torch.set_float32_matmul_precision("high")
 
     # Instantiate model and processor
-    model = AutoModelForImageTextToText.from_pretrained(cfg.model.name)
+    model = AutoModelForImageTextToText.from_pretrained(
+        cfg.model.name, low_cpu_mem_usage=True, attn_implementation="eager"
+    )
     processor = AutoProcessor.from_pretrained(cfg.model.name)
-    
+
     # Prepare model for training
     model.train()
     model.gradient_checkpointing_enable()

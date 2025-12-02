@@ -217,7 +217,7 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     input_ids = batch["input_ids"]
     attention_mask = batch["attention_mask"]
     pixel_values = batch["pixel_values"]
-    
+
     # Labels: ignore padding tokens
     labels = input_ids.clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100

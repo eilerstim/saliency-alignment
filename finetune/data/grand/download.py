@@ -39,7 +39,9 @@ def download_grand(data_cfg: DictConfig) -> None:
         and annotations_dir.exists()
         and len(list(annotations_dir.glob("*.json"))) > 0
     ):
-        logger.info(f"Some non-zero number of images and annotations already exist at {data_cfg.data_dir}. Skipping download.")
+        logger.info(
+            f"Some non-zero number of images and annotations already exist at {data_cfg.data_dir}. Skipping download."
+        )
         return
 
     # 1. Setup
@@ -59,7 +61,7 @@ def download_grand(data_cfg: DictConfig) -> None:
 
     # 3. Download and extract images (Streaming)
     images_dir.mkdir(parents=True, exist_ok=True)
-    
+
     max_archives = data_cfg.grand.get("max_image_archives", None)
 
     with open(links_file, encoding="utf-8") as f:
@@ -103,26 +105,36 @@ def download_grand(data_cfg: DictConfig) -> None:
 
     # 4. Process Annotations (Download one by one)
     annotations_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Get list of valid image stems
-    valid_stems = {p.stem for p in images_dir.rglob("*") if p.is_file() and not p.name.startswith(".")}
-    
-    logger.info(f"Found {len(valid_stems)} valid images. Fetching and processing annotation archives...")
+    valid_stems = {
+        p.stem
+        for p in images_dir.rglob("*")
+        if p.is_file() and not p.name.startswith(".")
+    }
+
+    logger.info(
+        f"Found {len(valid_stems)} valid images. Fetching and processing annotation archives..."
+    )
 
     # List files in the repo to find annotation tarballs
     api = HfApi()
     try:
         all_repo_files = api.list_repo_files(repo_id=repo_id, repo_type="dataset")
         # Filter for annotation tarballs (e.g., part_1/part_1_1.tar.gz)
-        annotation_tar_files = [f for f in all_repo_files if "part_" in f and f.endswith(".tar.gz")]
+        annotation_tar_files = [
+            f for f in all_repo_files if "part_" in f and f.endswith(".tar.gz")
+        ]
         annotation_tar_files.sort()
     except Exception as e:
         logger.error(f"Failed to list repo files: {e}")
         return
 
-    for tar_filename in tqdm(annotation_tar_files, desc="Processing annotation archives"):
+    for tar_filename in tqdm(
+        annotation_tar_files, desc="Processing annotation archives"
+    ):
         local_tar_path = repo_dir / tar_filename
-        
+
         # Download the single tarball
         try:
             hf_hub_download(
@@ -144,7 +156,7 @@ def download_grand(data_cfg: DictConfig) -> None:
                 for member in tar:
                     if not member.isfile():
                         continue
-                    
+
                     member_stem = Path(member.name).stem
                     if member_stem in valid_stems:
                         # Extract to annotations_dir

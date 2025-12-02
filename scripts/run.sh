@@ -15,6 +15,8 @@ echo "Beginning finetuning at $(date)"
 
 source scripts/env.sh
 
+export TOKENIZERS_PARALLELISM=false  # Disable tokenizer parallelism to avoid deadlocks
+
 uv run -m finetune
 
 echo "Finished finetuning at $(date)"

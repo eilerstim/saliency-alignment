@@ -1,4 +1,5 @@
 import lightning as L
+import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
@@ -31,15 +32,21 @@ class FineTuner(L.LightningModule):
         }
 
         # Forward pass
-        outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
+        outputs = self.model(**model_batch, return_dict=True)
         loss = outputs.loss
+
+        # Attention (save memory with torch.no_grad())
+        with torch.no_grad():
+            attns = self.model(
+                **model_batch, output_attentions=True, return_dict=True
+            ).attentions
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             input_ids=batch["input_ids"],
             preds=outputs.logits,
-            attentions=outputs.attentions,
+            attentions=attns,
             masks=batch.get("masks"),
         )
 
@@ -49,7 +56,9 @@ class FineTuner(L.LightningModule):
             "train/auxiliary_loss": auxiliary_loss,
             "train/loss": loss + auxiliary_loss,
         }
-        self.log_dict(log_dict, prog_bar=True)
+        self.log_dict(
+            log_dict, prog_bar=True, sync_dist=True, batch_size=len(batch["input_ids"])
+        )
 
         return loss + auxiliary_loss
 
@@ -63,7 +72,10 @@ class FineTuner(L.LightningModule):
         }
 
         # Forward pass
-        outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
+        with torch.inference_mode():
+            outputs = self.model(
+                **model_batch, output_attentions=True, return_dict=True
+            )
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -93,7 +105,9 @@ class FineTuner(L.LightningModule):
             "val/loss": loss + auxiliary_loss,
             "val/accuracy": accuracy,
         }
-        self.log_dict(log_dict, prog_bar=True)
+        self.log_dict(
+            log_dict, prog_bar=True, sync_dist=True, batch_size=len(batch["input_ids"])
+        )
 
     def configure_optimizers(self) -> tuple:
         optimizer = instantiate(self.cfg.optim, params=self.model.parameters())
