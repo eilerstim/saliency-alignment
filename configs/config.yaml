@@ -4,6 +4,7 @@ defaults:
   - data: coconut
   - loss: default
   - trainer
+  - dataloader
   - _self_
 
 seed: 42

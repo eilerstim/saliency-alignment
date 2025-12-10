@@ -32,14 +32,11 @@ class FineTuner(L.LightningModule):
         }
 
         # Forward pass
-        outputs = self.model(**model_batch, return_dict=True)
+        outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
-
-        # Attention (save memory with torch.no_grad())
-        with torch.no_grad():
-            attns = self.model(
-                **model_batch, output_attentions=True, return_dict=True
-            ).attentions
+        
+        # Don't save gradients
+        attns = [a.detach() for a in outputs.attentions]
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
@@ -127,7 +124,7 @@ class FineTuner(L.LightningModule):
             self.cfg.data.collator, processor=self.processor, _partial_=True
         )
 
-        dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
+        dl_kwargs = getattr(self.cfg, "dataloader", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)
         return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
 
@@ -140,7 +137,7 @@ class FineTuner(L.LightningModule):
             self.cfg.data.eval_collator, processor=self.processor, _partial_=True
         )
 
-        dl_kwargs = getattr(self.cfg.data, "dataloader_kwargs", {})
+        dl_kwargs = getattr(self.cfg, "dataloader", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)
         dl_kwargs["shuffle"] = False  # No shuffling for validation
 
