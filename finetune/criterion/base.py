@@ -10,15 +10,24 @@ class Criterion(ABC):
 
     Args:
         weight (float): Weighting factor for the loss. Default is 1.0.
+        image_token_id (int): Token ID representing the image token in the input. Default is 1.
+        patch_shape (tuple[int, int]): Shape of image patches (height, width). Default is (0, 0).
 
     Methods:
         compute_loss(labels, preds, attentions, **kwargs) -> float:
             Abstract method to compute the auxiliary loss. Must be implemented by subclasses.
     """
 
-    def __init__(self, weight: float = 1.0) -> None:
+    def __init__(
+        self,
+        weight: float = 1.0,
+        image_token_id: int = 1,
+        patch_shape: tuple[int, int] = (0, 0),
+    ) -> None:
         super().__init__()
         self.weight = weight
+        self.image_token_id = image_token_id
+        self.patch_shape = patch_shape
 
     def __call__(
         self,

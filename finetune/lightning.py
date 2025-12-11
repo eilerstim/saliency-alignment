@@ -5,6 +5,8 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
+from .transformer_utils import _get_image_token_id, _get_vision_patch_shape
+
 
 class FineTuner(L.LightningModule):
     """Fine-tuning module for a pre-trained model."""
@@ -16,7 +18,12 @@ class FineTuner(L.LightningModule):
         self.cfg = cfg
         self.model = model
         self.processor = processor
-        self.auxiliary_loss = instantiate(self.cfg.loss)
+
+        self.image_token_id = _get_image_token_id(self.model.config)
+        self.patch_shape = _get_vision_patch_shape(self.model.config)
+        self.auxiliary_loss = instantiate(
+            self.cfg.loss, self.image_token_id, self.patch_shape
+        )
 
     def forward(self, **batch):
         return self.model(**batch)
@@ -34,16 +41,13 @@ class FineTuner(L.LightningModule):
         # Forward pass
         outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
-        
-        # Don't save gradients
-        attns = [a.detach() for a in outputs.attentions]
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             input_ids=batch["input_ids"],
             preds=outputs.logits,
-            attentions=attns,
+            attentions=outputs.attentions,
             masks=batch.get("masks"),
         )
 
