@@ -3,9 +3,10 @@ max_epochs: 10
 deterministic: true
 accelerator: auto
 gradient_clip_val: 1.0
-enable_model_summary: true
+enable_model_summary: false
 
-strategy: ddp
-devices: 4
+# strategy: ddp
+# strategy: deepspeed_stage_3
+# devices: 4
 # precision: bf16-mixed
-accumulate_grad_batches: 1
+# accumulate_grad_batches: 1

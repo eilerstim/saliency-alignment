@@ -10,7 +10,12 @@ from lightning.pytorch.callbacks import (
     ModelCheckpoint,
 )
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
+from lightning.pytorch.strategies import FSDPStrategy
 from omegaconf import DictConfig, OmegaConf
+from torch.distributed.fsdp.fully_sharded_data_parallel import (
+    MixedPrecision,
+    ShardingStrategy,
+)
 from transformers import (  # LlavaForConditionalGeneration
     AutoModelForImageTextToText,
     AutoProcessor,
@@ -40,6 +45,7 @@ def finetune(cfg: DictConfig):
     # Prepare model for training
     model.train()
     model.gradient_checkpointing_enable()
+    model.config.use_cache = False
 
     # Prepare callbacks
     callbacks = [
@@ -70,10 +76,29 @@ def finetune(cfg: DictConfig):
         ),
     ]
 
+    strategy = FSDPStrategy(
+        auto_wrap_policy={
+            "min_num_params": 2e7
+        },  # wrap large modules (Transformer blocks)
+        sharding_strategy=ShardingStrategy.FULL_SHARD,  # ZeRO-3 equivalent
+        mixed_precision=MixedPrecision(
+            param_dtype=torch.bfloat16,
+            reduce_dtype=torch.bfloat16,
+            buffer_dtype=torch.bfloat16,
+        ),
+        cpu_offload=False,  # do NOT offload, A100s don't need it
+        activation_checkpointing=True,  # <-- important
+        limit_all_gathers=True,
+    )
+
     # Instantiate fine-tuner and trainer
     fine_tuner = FineTuner(cfg, model, processor)
     trainer = L.Trainer(
-        default_root_dir=hydra_wd, logger=loggers, callbacks=callbacks, **cfg.trainer
+        default_root_dir=hydra_wd,
+        logger=loggers,
+        strategy=strategy,
+        callbacks=callbacks,
+        **cfg.trainer,
     )
 
     # Fine-tuning
