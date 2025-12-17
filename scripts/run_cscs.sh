@@ -18,8 +18,6 @@ echo "Beginning finetuning at $(date)"
 
 cd /iopsstor/scratch/cscs/teilers/saliency-alignment
 
-pip uninstall -y torchao
-
 python -c "from transformers import AutoProcessor; print('ok')"
 
 export TOKENIZERS_PARALLELISM=false  # Disable tokenizer parallelism to avoid deadlocks
