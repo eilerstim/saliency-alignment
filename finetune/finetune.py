@@ -16,6 +16,13 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import (
     MixedPrecision,
     ShardingStrategy,
 )
+from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
+from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+    checkpoint_wrapper,
+    CheckpointImpl,
+    apply_activation_checkpointing,
+)
+from functools import partial
 from transformers import (  # LlavaForConditionalGeneration
     AutoModelForImageTextToText,
     AutoProcessor,
@@ -76,10 +83,13 @@ def finetune(cfg: DictConfig):
         ),
     ]
 
+    auto_wrap_policy = partial(
+        size_based_auto_wrap_policy,
+        min_num_params=int(2e7),
+    )
+
     strategy = FSDPStrategy(
-        auto_wrap_policy={
-            "min_num_params": 2e7
-        },  # wrap large modules (Transformer blocks)
+        auto_wrap_policy=auto_wrap_policy,  # wrap large modules (Transformer blocks)
         sharding_strategy=ShardingStrategy.FULL_SHARD,  # ZeRO-3 equivalent
         mixed_precision=MixedPrecision(
             param_dtype=torch.bfloat16,
@@ -87,7 +97,7 @@ def finetune(cfg: DictConfig):
             buffer_dtype=torch.bfloat16,
         ),
         cpu_offload=False,  # do NOT offload, A100s don't need it
-        activation_checkpointing=True,  # <-- important
+        activation_checkpointing_policy=auto_wrap_policy,  # use same policy as auto_wrap
         limit_all_gathers=True,
     )
 

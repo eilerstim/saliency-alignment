@@ -1,8 +1,8 @@
 defaults:
   - model: llava-1.5-7b
   - optim: adamw
-  - data: coconut
-  - loss: default
+  - data: grand
+  - loss: alignment
   - trainer
   - dataloader
   - _self_

@@ -1,6 +1,19 @@
 name: grand
 data_dir: ${oc.env:SCRATCH}/saliency-alignment/data/${.name}
 
+# Dataset configuration
+dataset:
+  _target_: finetune.data.grand.dataset.GranDDataset
+
+# Collator configuration  
+collator:
+  _target_: finetune.data.grand.collator.train_collate_fn
+  # processor will be passed at runtime via partial
+
+eval_collator:
+  _target_: finetune.data.grand.collator.eval_collate_fn
+  # processor will be passed at runtime via partial
+
 grand:
   repo_id: MBZUAI/GranD
   repo_dir: ${..data_dir}/GranD_repo
