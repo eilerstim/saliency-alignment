@@ -18,13 +18,13 @@ eval_collator:
 train:
   split: train
   name: train2017
-  save_dir: ${..data_dir}/train/
+  save_dir: ${..data_dir}/images/train/
   url: http://images.cocodataset.org/zips/train2017.zip
 
 validation:
   split: validation
   name: val2017
-  save_dir: ${..data_dir}/validation/
+  save_dir: ${..data_dir}/images/validation/
   url: http://images.cocodataset.org/zips/val2017.zip
 
 annotations:
@@ -34,9 +34,20 @@ annotations:
   ann_file: ${.save_dir}/instances_{}.json
   captions_file: ${.save_dir}/captions_{}.json
 
+panoptic:
+  name: panoptic
+  save_dir: ${..data_dir}/annotations/panoptic_segmentation
+  url: http://images.cocodataset.org/annotations/panoptic_annotations_trainval2017.zip
+
 coconut:
   masks_dir: ${..data_dir}/panoptic_train2017_masks
   captions_dir: ${..data_dir}/panoptic_train2017_captions
   ann_file: ${..annotations.save_dir}/panoptic_train2017.json
   captions_url: https://huggingface.co/datasets/xdeng77/coconut_pancap_50k/resolve/main/coconut_pancap_50k.tar?download=true
   captions_tar_path: ${..data_dir}/coconut_pancap_50k.tar
+
+png:
+  ann_file_train_url: https://lambda004.uniandes.edu.co/panoptic-narrative-grounding/annotations/png_coco_train2017.json
+  ann_file_val_url: https://lambda004.uniandes.edu.co/panoptic-narrative-grounding/annotations/png_coco_val2017.json
+  features_dir: ${..data_dir}/features
+  features_val_url: https://lambda004.uniandes.edu.co/panoptic-narrative-grounding/features/val2017.zip

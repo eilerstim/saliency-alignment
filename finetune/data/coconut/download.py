@@ -6,6 +6,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import hydra
 from datasets import load_dataset
 from omegaconf import DictConfig
 from tqdm import tqdm
@@ -33,6 +34,7 @@ def download_coco(data_cfg: DictConfig):
         (data_cfg.train.name, data_cfg.train.url),
         (data_cfg.validation.name, data_cfg.validation.url),
         (data_cfg.annotations.name, data_cfg.annotations.url),
+        (data_cfg.panoptic.name, data_cfg.panoptic.url),
     ]
 
     # Download and extract data
@@ -397,3 +399,28 @@ def download_coconut(data_cfg: DictConfig):
         logger.info("Captions extracted successfully!")
     else:
         logger.info(f"Captions already extracted at {output_captions_dir}")
+
+def download_png(data_cfg: DictConfig):
+    """Download PNG dataset.
+
+    Args:
+        data_cfg: Data configuration containing paths and URLs.
+    """
+    # First download 
+    
+
+@hydra.main(
+    version_base="1.3",
+    config_path="/cluster/project/sachan/pmlr/saliency-alignment/configs/data/",
+    config_name="coconut",
+)
+def main(cfg: DictConfig) -> None:
+    download_coco(cfg)
+    if cfg.get("coconut") is not None:
+        download_coconut(cfg)
+    if cfg.get("png") is not None:
+        download_coco(cfg)
+
+
+if __name__ == "__main__":
+    main()
