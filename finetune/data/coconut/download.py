@@ -401,13 +401,117 @@ def download_coconut(data_cfg: DictConfig):
         logger.info(f"Captions already extracted at {output_captions_dir}")
 
 def download_png(data_cfg: DictConfig):
-    """Download PNG dataset.
+    """Download Panoptic Narrative Grounding (PNG) dataset.
+
+    Downloads annotations and features, reusing COCO images and panoptic segmentation.
+    For train features (not available for direct download), clones the PNG repo
+    and runs feature extraction using the pretrained model.
 
     Args:
-        data_cfg: Data configuration containing paths and URLs.
+        data_cfg: Data configuration containing paths and URLs for PNG dataset.
+
+    Target structure (in same data_dir as COCO):
+        data_dir/
+        |_ images/
+        |  |_ train2017/        (from COCO)
+        |  |_ val2017/          (from COCO)
+        |_ features/
+        |  |_ train2017/
+        |  |  |_ mask_features/
+        |  |  |_ sem_seg_features/
+        |  |  |_ panoptic_seg_predictions/
+        |  |_ val2017/
+        |     |_ mask_features/
+        |     |_ sem_seg_features/
+        |     |_ panoptic_seg_predictions/
+        |_ annotations/
+           |_ png_coco_train2017.json
+           |_ png_coco_val2017.json
+           |_ panoptic_segmentation/  (from COCO)
+           |  |_ train2017/
+           |  |_ val2017/
+           |_ panoptic_train2017.json (from COCO)
+           |_ panoptic_val2017.json   (from COCO)
     """
-    # First download 
-    
+    png_cfg = data_cfg.png
+    data_dir = Path(data_cfg.data_dir)
+
+    # PNG uses the same data_dir as COCO - reuse images and annotations
+    # Create PNG-specific directories
+    features_dir = data_dir / "features"
+    annotations_dir = data_dir / "annotations"
+
+    features_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create feature subdirectories
+    for split in ["train2017", "val2017"]:
+        (features_dir / split).mkdir(parents=True, exist_ok=True)
+
+    # Images are already at data_dir/train2017 and data_dir/val2017 from COCO download
+    # Panoptic segmentation is already at data_dir/annotations/panoptic_segmentation from COCO download
+
+    # Download PNG annotation files
+    ann_train_path = annotations_dir / "png_coco_train2017.json"
+    ann_val_path = annotations_dir / "png_coco_val2017.json"
+
+    if not ann_train_path.exists():
+        logger.info("Downloading PNG train annotations...")
+        urllib.request.urlretrieve(png_cfg.ann_file_train_url, ann_train_path)
+        logger.info(f"Downloaded PNG train annotations to {ann_train_path}")
+    else:
+        logger.info(f"PNG train annotations already exist at {ann_train_path}")
+
+    if not ann_val_path.exists():
+        logger.info("Downloading PNG val annotations...")
+        urllib.request.urlretrieve(png_cfg.ann_file_val_url, ann_val_path)
+        logger.info(f"Downloaded PNG val annotations to {ann_val_path}")
+    else:
+        logger.info(f"PNG val annotations already exist at {ann_val_path}")
+
+    # Download val2017 features
+    val_features_dir = features_dir / "val2017"
+    val_features_complete = (
+        (val_features_dir / "mask_features").exists()
+        and len(list((val_features_dir / "mask_features").glob("*"))) > 0
+        and (val_features_dir / "sem_seg_features").exists()
+        and len(list((val_features_dir / "sem_seg_features").glob("*"))) > 0
+        and (val_features_dir / "panoptic_seg_predictions").exists()
+        and len(list((val_features_dir / "panoptic_seg_predictions").glob("*"))) > 0
+    )
+
+    if not val_features_complete:
+        features_zip_path = data_dir / "val2017_features.zip"
+        if not features_zip_path.exists():
+            logger.info("Downloading val2017 features...")
+            urllib.request.urlretrieve(png_cfg.features_val_url, features_zip_path)
+            logger.info("Downloaded val2017 features")
+
+        logger.info("Extracting val2017 features...")
+        with zipfile.ZipFile(features_zip_path, "r") as zip_ref:
+            zip_ref.extractall(features_dir)
+        features_zip_path.unlink()
+        logger.info("Extracted val2017 features")
+    else:
+        logger.info("Val2017 features already exist")
+
+    # For train2017 features, we need to run feature extraction using the PNG repo
+    train_features_dir = features_dir / "train2017"
+    train_features_complete = (
+        (train_features_dir / "mask_features").exists()
+        and len(list((train_features_dir / "mask_features").glob("*"))) > 0
+        and (train_features_dir / "sem_seg_features").exists()
+        and len(list((train_features_dir / "sem_seg_features").glob("*"))) > 0
+        and (train_features_dir / "panoptic_seg_predictions").exists()
+        and len(list((train_features_dir / "panoptic_seg_predictions").glob("*"))) > 0
+    )
+
+    if not train_features_complete:
+        logger.info("Remember to generate train2017 features using the PNG repo.")
+    else:
+        logger.info("Train2017 features already exist")
+
+    logger.info("PNG dataset download and setup complete!")
+
 
 @hydra.main(
     version_base="1.3",
@@ -419,7 +523,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.get("coconut") is not None:
         download_coconut(cfg)
     if cfg.get("png") is not None:
-        download_coco(cfg)
+        download_png(cfg)
 
 
 if __name__ == "__main__":
