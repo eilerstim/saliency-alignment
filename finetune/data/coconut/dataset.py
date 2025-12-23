@@ -51,7 +51,7 @@ class COCONutPanCapDataset(Dataset):
         self.split = split
 
         # Build paths - COCONut uses train2017 images from COCO
-        self.root_dir = Path(data_cfg.data_dir) / "train2017"
+        self.root_dir = Path(data_cfg.train.images_dir)
         self.mask_dir = Path(data_cfg.coconut.masks_dir)
         self.captions_dir = Path(data_cfg.coconut.captions_dir)
 

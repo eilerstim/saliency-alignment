@@ -22,43 +22,123 @@ def download_coco(data_cfg: DictConfig):
     Downloads training images, validation images, and annotations from COCO dataset URLs
     specified in the configuration. Skips download if files already exist locally.
 
+    Target structure:
+        data_dir/
+        |_ images/
+        |  |_ train2017/
+        |  |_ val2017/
+        |_ annotations/
+           |_ panoptic_segmentation/
+           |  |_ train2017/
+           |  |_ val2017/
+           |_ panoptic_train2017.json
+           |_ panoptic_val2017.json
+           |_ instances_train2017.json
+           |_ ...
+
     Args:
         data_cfg: Configuration containing data directory path and download URLs for
             train images, validation images, and annotations.
     """
     data_dir = Path(data_cfg.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    images_dir = Path(data_cfg.images_dir)
+    annotations_dir = Path(data_cfg.annotations_dir)
+    panoptic_seg_dir = Path(data_cfg.panoptic.segmentation_dir)
 
-    # Prepare download URLs and names
-    downloads = [
+    # Create directories
+    data_dir.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(parents=True, exist_ok=True)
+    annotations_dir.mkdir(parents=True, exist_ok=True)
+    panoptic_seg_dir.mkdir(parents=True, exist_ok=True)
+
+    # Download and extract image datasets (train2017, val2017) into images/
+    image_downloads = [
         (data_cfg.train.name, data_cfg.train.url),
         (data_cfg.validation.name, data_cfg.validation.url),
-        (data_cfg.annotations.name, data_cfg.annotations.url),
-        (data_cfg.panoptic.name, data_cfg.panoptic.url),
     ]
 
-    # Download and extract data
-    for name, url in downloads:
+    for name, url in image_downloads:
         zip_path = data_dir / f"{name}.zip"
+        extract_dir = images_dir / name
 
-        # Check if already extracted
-        extract_dir = data_dir / name
         if extract_dir.exists():
             logger.info(f"{name} already exists at {extract_dir}")
             continue
 
-        # Check if already downloaded
         if not zip_path.exists():
             logger.info(f"Downloading {name}...")
             urllib.request.urlretrieve(url, zip_path)
 
-        # Extract archive
         logger.info(f"Extracting {name}...")
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(data_dir)
+            zip_ref.extractall(images_dir)
         zip_path.unlink()
 
         logger.info(f"Successfully extracted {name}")
+
+    # Download and extract annotations
+    ann_name = data_cfg.annotations.name
+    ann_url = data_cfg.annotations.url
+    ann_zip_path = data_dir / f"{ann_name}.zip"
+
+    # Check if annotations are already extracted (check for a known file)
+    if not (annotations_dir / "instances_train2017.json").exists():
+        if not ann_zip_path.exists():
+            logger.info(f"Downloading {ann_name}...")
+            urllib.request.urlretrieve(ann_url, ann_zip_path)
+
+        logger.info(f"Extracting {ann_name}...")
+        with zipfile.ZipFile(ann_zip_path, "r") as zip_ref:
+            zip_ref.extractall(data_dir)
+        ann_zip_path.unlink()
+
+        logger.info(f"Successfully extracted {ann_name}")
+    else:
+        logger.info(f"{ann_name} already exists at {annotations_dir}")
+
+    # Download and extract panoptic annotations
+    panoptic_name = data_cfg.panoptic.name
+    panoptic_url = data_cfg.panoptic.url
+    panoptic_zip_path = data_dir / f"{panoptic_name}.zip"
+
+    # Check if panoptic segmentation masks are already extracted
+    panoptic_train_dir = panoptic_seg_dir / "train2017"
+    panoptic_val_dir = panoptic_seg_dir / "val2017"
+
+    if not panoptic_train_dir.exists() or not panoptic_val_dir.exists():
+        if not panoptic_zip_path.exists():
+            logger.info(f"Downloading {panoptic_name}...")
+            urllib.request.urlretrieve(panoptic_url, panoptic_zip_path)
+
+        logger.info(f"Extracting {panoptic_name}...")
+        with zipfile.ZipFile(panoptic_zip_path, "r") as zip_ref:
+            zip_ref.extractall(data_dir)
+        panoptic_zip_path.unlink()
+
+        # The panoptic zip extracts to annotations/ with:
+        # - panoptic_train2017.json, panoptic_val2017.json (JSON files)
+        # - panoptic_train2017.zip, panoptic_val2017.zip (mask images as nested zips)
+        # Extract the nested zips to panoptic_segmentation/{split}/
+        for split in ["train2017", "val2017"]:
+            nested_zip = annotations_dir / f"panoptic_{split}.zip"
+            split_dir = panoptic_seg_dir / split
+
+            if nested_zip.exists() and not split_dir.exists():
+                logger.info(f"Extracting panoptic masks for {split}...")
+                with zipfile.ZipFile(nested_zip, "r") as zip_ref:
+                    zip_ref.extractall(annotations_dir)
+
+                # Move extracted folder to panoptic_segmentation/{split}
+                extracted_dir = annotations_dir / f"panoptic_{split}"
+                if extracted_dir.exists():
+                    extracted_dir.rename(split_dir)
+
+                nested_zip.unlink()
+                logger.info(f"Successfully extracted panoptic masks for {split}")
+
+        logger.info(f"Successfully extracted {panoptic_name}")
+    else:
+        logger.info(f"{panoptic_name} already exists at {panoptic_seg_dir}")
 
     logger.info("COCO dataset download and extraction complete")
 
@@ -435,11 +515,7 @@ def download_png(data_cfg: DictConfig):
     """
     png_cfg = data_cfg.png
     data_dir = Path(data_cfg.data_dir)
-
-    # PNG uses the same data_dir as COCO - reuse images and annotations
-    # Create PNG-specific directories
-    features_dir = data_dir / "features"
-    annotations_dir = data_dir / "annotations"
+    features_dir = Path(data_cfg.features_dir)
 
     features_dir.mkdir(parents=True, exist_ok=True)
 
@@ -447,12 +523,9 @@ def download_png(data_cfg: DictConfig):
     for split in ["train2017", "val2017"]:
         (features_dir / split).mkdir(parents=True, exist_ok=True)
 
-    # Images are already at data_dir/train2017 and data_dir/val2017 from COCO download
-    # Panoptic segmentation is already at data_dir/annotations/panoptic_segmentation from COCO download
-
     # Download PNG annotation files
-    ann_train_path = annotations_dir / "png_coco_train2017.json"
-    ann_val_path = annotations_dir / "png_coco_val2017.json"
+    ann_train_path = Path(png_cfg.ann_file_train)
+    ann_val_path = Path(png_cfg.ann_file_val)
 
     if not ann_train_path.exists():
         logger.info("Downloading PNG train annotations...")
@@ -515,15 +588,12 @@ def download_png(data_cfg: DictConfig):
 
 @hydra.main(
     version_base="1.3",
-    config_path="/cluster/project/sachan/pmlr/saliency-alignment/configs/data/",
+    config_path="../../../configs/data/",
     config_name="coconut",
 )
 def main(cfg: DictConfig) -> None:
     download_coco(cfg)
-    if cfg.get("coconut") is not None:
-        download_coconut(cfg)
-    if cfg.get("png") is not None:
-        download_png(cfg)
+    download_png(cfg)
 
 
 if __name__ == "__main__":
