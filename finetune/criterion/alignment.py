@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 
 from finetune.criterion import Criterion
-from finetune.criterion.utils import image_attentions
 
 
 class SaliencyAlignment(Criterion):
@@ -28,17 +27,9 @@ class SaliencyAlignment(Criterion):
         masks: list[torch.Tensor],
         **kwargs: Any,
     ) -> float:
-        # Extract attention traces for image tokens (batch_size, gen_len, H_tokens, W_tokens)
-        traces = image_attentions(
-            input_ids=input_ids,
-            attentions=attentions,
-            image_token_id=self.image_token_id,
-            image_shape=self.patch_shape,
-        )
-
         # Compute saliency alignment loss
         scores = []
-        for trace, annotations in zip(traces, masks, strict=True):
+        for trace, annotations in zip(attentions, masks, strict=True):
             # Normalize per generated token (gen_len, patch_H, patch_W)
             trace = trace / (trace.sum(dim=(1, 2), keepdim=True) + 1e-8)
 

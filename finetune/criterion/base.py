@@ -18,16 +18,9 @@ class Criterion(ABC):
             Abstract method to compute the auxiliary loss. Must be implemented by subclasses.
     """
 
-    def __init__(
-        self,
-        weight: float = 1.0,
-        image_token_id: int = 1,
-        patch_shape: tuple[int, int] = (0, 0),
-    ) -> None:
+    def __init__(self, weight: float = 1.0) -> None:
         super().__init__()
         self.weight = weight
-        self.image_token_id = image_token_id
-        self.patch_shape = patch_shape
 
     def __call__(
         self,
@@ -64,7 +57,7 @@ class Criterion(ABC):
             labels (torch.Tensor): Ground truth labels.  [batch_size, seq_len]
             input_ids (torch.Tensor): Input token IDs. [batch_size, seq_len]
             preds (torch.Tensor): The model prediction logits. [batch_size, seq_len, vocab_size]
-            attentions (Sequence[torch.Tensor]): The attention weights from the model. [List of tensors with shape [batch_size, num_heads, seq_len, seq_len]]
+            attentions (Sequence[torch.Tensor]): The attention weights from the model. [List of tensors with shape [seq_len, H, W]]
             masks (list[torch.Tensor]): Binary annotation masks. List of [seq_len, H, W]. Zero tensors indicate no annotation.
             **kwargs (Any): Additional keyword arguments
 

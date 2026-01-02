@@ -5,6 +5,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
+from .saliency import SaliencyAccumulator, sdpa_saliency
 from .transformer_utils import _get_image_token_id, _get_vision_patch_shape
 
 
@@ -21,18 +22,27 @@ class FineTuner(L.LightningModule):
 
         self.image_token_id = _get_image_token_id(self.model.config)
         self.patch_shape = _get_vision_patch_shape(self.model.config)
-        self.auxiliary_loss = instantiate(
-            self.cfg.loss,
-            image_token_id=self.image_token_id,
-            patch_shape=self.patch_shape,
-        )
+
+        text_config = self.model.config.text_config
+        self.head_dim = text_config.hidden_size // text_config.num_attention_heads
+
+        # Instantiate auxiliary loss function
+        self.auxiliary_loss = instantiate(self.cfg.loss)
+
+        if model.config._attn_implementation != "sdpa":
+            raise ValueError("Saliency loss only works with standard attention (sdpa).")
+        self.accum = SaliencyAccumulator(cfg.dataloader.batch_size, self.patch_shape)
 
     def forward(self, **batch):
         return self.model(**batch)
 
     def training_step(self, batch: dict, batch_idx: int):
-        # Forward pass
-        outputs = self.model(**batch, output_attentions=True, return_dict=True)
+        img_starts = batch.pop("img_starts")
+        gen_starts = batch.pop("gen_starts")
+
+        # Forward pass with saliency accumulation
+        with sdpa_saliency(self.accum, img_starts, gen_starts, self.head_dim):
+            outputs = self.model(**batch, return_dict=True)
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -40,7 +50,7 @@ class FineTuner(L.LightningModule):
             labels=batch["labels"],
             input_ids=batch["input_ids"],
             preds=outputs.logits,
-            attentions=outputs.attentions,
+            attentions=self.accum.get_maps(),
             masks=batch.get("masks"),
         )
 
@@ -57,9 +67,13 @@ class FineTuner(L.LightningModule):
         return loss + auxiliary_loss
 
     def validation_step(self, batch: dict, batch_idx: int):
-        # Forward pass
-        with torch.inference_mode():
-            outputs = self.model(**batch, output_attentions=True, return_dict=True)
+        img_starts = batch.pop("img_starts")
+        gen_starts = batch.pop("gen_starts")
+
+        # Forward pass with saliency accumulation
+        with sdpa_saliency(self.accum, img_starts, gen_starts, self.head_dim):
+            with torch.inference_mode():
+                outputs = self.model(**batch, return_dict=True)
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -67,7 +81,7 @@ class FineTuner(L.LightningModule):
             labels=batch["labels"],
             input_ids=batch["input_ids"],
             preds=outputs.logits,
-            attentions=outputs.attentions,
+            attentions=self.accum.get_maps(),
             masks=batch.get("masks"),
         )
 
@@ -107,9 +121,7 @@ class FineTuner(L.LightningModule):
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
 
         # Get collator function and bind processor via partial
-        collate_fn = instantiate(
-            self.cfg.data.collator, processor=self.processor, _partial_=True
-        )
+        collate_fn = self._collate_fn(self.cfg.data.collator)
 
         dl_kwargs = getattr(self.cfg, "dataloader", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)
@@ -120,12 +132,43 @@ class FineTuner(L.LightningModule):
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
 
         # Get eval collator function and bind processor via partial
-        collate_fn = instantiate(
-            self.cfg.data.eval_collator, processor=self.processor, _partial_=True
-        )
+        collate_fn = self._collate_fn(self.cfg.data.eval_collator)
 
         dl_kwargs = getattr(self.cfg, "dataloader", {})
         dl_kwargs = OmegaConf.to_container(dl_kwargs)
         dl_kwargs["shuffle"] = False  # No shuffling for validation
 
         return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
+
+    def _collate_fn(self, collator_cfg: DictConfig) -> dict:
+        """Wrapper around the collate function to bind the processor."""
+        collate_fn = instantiate(collator_cfg, processor=self.processor, _partial_=True)
+
+        def wrapper(batch: list[dict]) -> dict:
+            batch = collate_fn(batch)
+
+            input_ids = batch["input_ids"]
+            B, S = input_ids.size()
+
+            batch_idx, seq_idx = (input_ids == self.image_token_id).nonzero(
+                as_tuple=True
+            )
+
+            img_starts = torch.full((B,), S, dtype=torch.long, device=input_ids.device)
+            gen_starts = torch.zeros((B,), dtype=torch.long, device=input_ids.device)
+
+            img_starts.scatter_reduce_(0, batch_idx, seq_idx, reduce="amin")
+            gen_starts.scatter_reduce_(0, batch_idx, seq_idx + 1, reduce="amax")
+
+            if (img_starts == S).any():
+                raise RuntimeError("Sample without image tokens")
+
+            if (img_starts >= gen_starts).any():
+                raise RuntimeError("Malformed image spans in input_ids.")
+
+            batch["img_starts"] = img_starts
+            batch["gen_starts"] = gen_starts
+
+            return batch
+
+        return wrapper
