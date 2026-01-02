@@ -24,13 +24,13 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             that handles both image and text processing.
 
     Returns:
-        tuple: A tuple containing:
+        dict:
             - input_ids (torch.Tensor): Token IDs of shape [batch_size, seq_len]
             - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
             - masks (list of torch.Tensor): Per-token annotation masks of shape [seq_len, height, width]
-
+            - **batch: Additional fields provided by the processor
     Note:
         The function creates clean captions by removing <id: text> markers before
         passing to the model, but separately tokenizes the annotated captions to
@@ -89,8 +89,6 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     )
 
     input_ids = batch["input_ids"]
-    attention_mask = batch["attention_mask"]
-    pixel_values = batch["pixel_values"]
 
     # Labels: ignore padding tokens
     labels = input_ids.clone()
@@ -144,9 +142,8 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
 
     # Segment infos left out for now, can be added if needed
     return {
+        **batch,
         "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "pixel_values": pixel_values,
         "labels": labels,
         "masks": annotation_masks,
     }
@@ -169,7 +166,7 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             that handles both image and text processing.
 
     Returns:
-        tuple: A tuple containing:
+        dict: A dictionary containing:
             - input_ids (torch.Tensor): Token IDs for prompts [batch_size, seq_len]
             - attention_mask (torch.Tensor): Attention mask [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
@@ -177,7 +174,7 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             - masks (list of torch.Tensor): Per-token annotation masks of shape [seq_len, height, width]
             - segments_infos (torch.Tensor): Tensor of shape [batch_size, max_segments, 2]
               containing (segment_id, category_id) pairs, padded with -1
-
+            - **batch: Additional fields provided by the processor
     Note:
         Unlike train_collate_fn, this uses add_generation_prompt=True to prepare
         the input for text generation during evaluation.
@@ -215,8 +212,6 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     batch = processor(text=texts, images=images, return_tensors="pt", padding=True)
 
     input_ids = batch["input_ids"]
-    attention_mask = batch["attention_mask"]
-    pixel_values = batch["pixel_values"]
 
     # Labels: ignore padding tokens
     labels = input_ids.clone()
@@ -240,10 +235,9 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     segments_infos = segments_infos_tensor
 
     return {
+        **batch,
         "input_ids": input_ids,
         "labels": labels,
-        "attention_mask": attention_mask,
-        "pixel_values": pixel_values,
         "answers": answers,
         "masks": masks,
         "segments_infos": segments_infos,

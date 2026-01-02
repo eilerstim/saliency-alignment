@@ -31,17 +31,8 @@ class FineTuner(L.LightningModule):
         return self.model(**batch)
 
     def training_step(self, batch: dict, batch_idx: int):
-        # Only pass model-relevant inputs to the backbone
-
-        model_batch = {
-            "input_ids": batch["input_ids"],
-            "attention_mask": batch["attention_mask"],
-            "pixel_values": batch["pixel_values"],
-            "labels": batch["labels"],
-        }
-
         # Forward pass
-        outputs = self.model(**model_batch, output_attentions=True, return_dict=True)
+        outputs = self.model(**batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -66,19 +57,9 @@ class FineTuner(L.LightningModule):
         return loss + auxiliary_loss
 
     def validation_step(self, batch: dict, batch_idx: int):
-        # Only pass model-relevant inputs to the backbone
-        model_batch = {
-            "input_ids": batch["input_ids"],
-            "attention_mask": batch["attention_mask"],
-            "pixel_values": batch["pixel_values"],
-            "labels": batch["labels"],
-        }
-
         # Forward pass
         with torch.inference_mode():
-            outputs = self.model(
-                **model_batch, output_attentions=True, return_dict=True
-            )
+            outputs = self.model(**batch, output_attentions=True, return_dict=True)
         loss = outputs.loss
 
         # Calculate auxiliary loss

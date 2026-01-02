@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=large-sc-2
-#SBATCH --job-name=finetune
+#SBATCH --job-name=saliency
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --time=02:00:00
@@ -16,7 +16,7 @@ source ./scripts/cscs/env.sh
 
 echo "Beginning finetuning at $(date)"
 
-export CRITERION=alignment
+export CRITERION=default
 export LAMBDA=0.5
 export MODEL=llava-v1.6-mistral-7b-hf
 

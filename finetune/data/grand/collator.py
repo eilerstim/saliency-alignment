@@ -20,13 +20,13 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             that handles both image and text processing.
 
     Returns:
-        tuple: A tuple containing:
+        dict: A dictionary containing:
             - input_ids (torch.Tensor): Token IDs of shape [batch_size, seq_len]
             - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
             - masks (torch.Tensor): Per-token annotation masks of shape [batch_size, seq_len, height, width]
-
+            - **batch: Additional fields provided by the processor
     Note:
         RLE masks are decoded on-the-fly only for objects referenced by tokens.
         Token-to-object mapping is determined using character positions from
@@ -81,8 +81,6 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     )
 
     input_ids = batch["input_ids"]
-    attention_mask = batch["attention_mask"]
-    pixel_values = batch["pixel_values"]
 
     # Labels: ignore padding tokens
     labels = input_ids.clone()
@@ -170,8 +168,8 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
                     annotation_masks[i, j] = token_mask.float()
 
     return {
+        **batch,
         "input_ids": input_ids,
-        "attention_mask": attention_mask,
         "pixel_values": pixel_values,
         "labels": labels,
         "masks": annotation_masks,
@@ -195,14 +193,14 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             that handles both image and text processing.
 
     Returns:
-        tuple: A tuple containing:
+        dict: A dictionary containing:
             - input_ids (torch.Tensor): Token IDs for prompts [batch_size, seq_len]
             - attention_mask (torch.Tensor): Attention mask [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - answers (list): List of ground truth caption strings
             - rle_masks_list (list): List of RLE mask dictionaries for each example
             - phrase_positions_list (list): List of phrase position mappings for each example
-
+            - **batch: Additional fields provided by the processor
     Note:
         Unlike train_collate_fn, this uses add_generation_prompt=True to prepare
         the input for text generation during evaluation.
@@ -241,9 +239,7 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     batch = processor(text=texts, images=images, return_tensors="pt", padding=True)
 
     return {
-        "input_ids": batch["input_ids"],
-        "attention_mask": batch["attention_mask"],
-        "pixel_values": batch["pixel_values"],
+        **batch,
         "answers": answers,
         "rle_masks_list": rle_masks_list,
         "phrase_positions_list": phrase_positions_list,
