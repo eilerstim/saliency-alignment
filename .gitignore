@@ -11,6 +11,8 @@ wheels/
 
 # Cache
 .*_cache
+.hf/
+.uv/
 
 # Hydra outputs
 outputs/
