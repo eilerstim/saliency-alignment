@@ -51,6 +51,9 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         # Parse caption and build a clean version without markers
         parsed_segments = parse_annotated_caption(caption)
         clean_caption = "".join(text for _, text in parsed_segments)
+        
+        if not clean_caption.strip():
+            return None  # Skip empty captions
 
         # Build chat messages with *clean* caption only
         messages = [
@@ -112,7 +115,7 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             continue
 
         caption_start = valid_positions[0].item()
-        caption_len = len(valid_positions)
+        caption_len = min(len(cap_ann_ids), seq_len - caption_start)
 
         # Truncate/pad annotation ids to match caption_len
         if len(cap_ann_ids) >= caption_len:
@@ -138,7 +141,6 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             token_mask = annotation_masks[i][j]
             for ann_id in ann_ids:
                 token_mask |= img_mask == ann_id
-        annotation_masks[i] = annotation_masks[i].float()
 
     # Segment infos left out for now, can be added if needed
     return {

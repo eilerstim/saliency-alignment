@@ -42,13 +42,12 @@ def finetune(cfg: DictConfig):
 
     # Instantiate model and processor
     model = AutoModelForImageTextToText.from_pretrained(
-        cfg.model.name, low_cpu_mem_usage=True, attn_implementation="eager"
+        cfg.model.name, attn_implementation="sdpa"
     )
     processor = AutoProcessor.from_pretrained(cfg.model.name)
 
     # Prepare model for training
     model.train()
-    model.gradient_checkpointing_enable()
     model.config.use_cache = False
 
     # Prepare loggers
@@ -63,21 +62,23 @@ def finetune(cfg: DictConfig):
         ),
     ]
 
+    # Wrap large modules (Transformer blocks)
     auto_wrap_policy = partial(
         size_based_auto_wrap_policy,
         min_num_params=int(2e7),
     )
 
+    # Define FSDP strategy with mixed precision (ZeRO-3 equivalent)
     strategy = FSDPStrategy(
-        auto_wrap_policy=auto_wrap_policy,  # wrap large modules (Transformer blocks)
-        sharding_strategy=ShardingStrategy.FULL_SHARD,  # ZeRO-3 equivalent
+        auto_wrap_policy=auto_wrap_policy,
+        sharding_strategy=ShardingStrategy.FULL_SHARD,
         mixed_precision=MixedPrecision(
             param_dtype=torch.bfloat16,
             reduce_dtype=torch.bfloat16,
             buffer_dtype=torch.bfloat16,
         ),
-        cpu_offload=False,  # do NOT offload, A100s don't need it
-        activation_checkpointing_policy=auto_wrap_policy,  # use same policy as auto_wrap
+        cpu_offload=False,
+        activation_checkpointing_policy=auto_wrap_policy,
         limit_all_gathers=True,
     )
 

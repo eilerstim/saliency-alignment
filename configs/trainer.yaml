@@ -2,7 +2,7 @@
 max_epochs: 10
 deterministic: true
 accelerator: auto
-gradient_clip_val: 1.0
+gradient_clip_val: null
 enable_model_summary: false
 
 # strategy: ddp
