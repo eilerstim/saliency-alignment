@@ -22,7 +22,9 @@ class FineTuner(L.LightningModule):
         self.image_token_id = _get_image_token_id(self.model.config)
         self.patch_shape = _get_vision_patch_shape(self.model.config)
         self.auxiliary_loss = instantiate(
-            self.cfg.loss, image_token_id=self.image_token_id, patch_shape=self.patch_shape
+            self.cfg.loss,
+            image_token_id=self.image_token_id,
+            patch_shape=self.patch_shape,
         )
 
     def forward(self, **batch):

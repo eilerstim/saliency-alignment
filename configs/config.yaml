@@ -8,8 +8,16 @@ defaults:
   - _self_
 
 seed: 42
-checkpoint_every_n_epochs: 10
+
+run_id: ${oc.env:SLURM_JOB_NAME}_${oc.env:MODEL_SIZE}_${oc.env:CRITERION}_w${oc.env:LAMBDA}_${oc.env:SLURM_JOB_ID}
 
 wandb:
   project: saliency-alignment
   entity: teilers-eth-z-rich
+  name: ${run_id}
+
+hydra:
+  run:
+    dir: outputs/${run_id}
+  sweep:
+    dir: outputs/${run_id}

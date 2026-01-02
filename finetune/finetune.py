@@ -1,14 +1,12 @@
 import logging
+import os
+from functools import partial
 
 import hydra
 import lightning as L
 import torch
 from hydra.core.hydra_config import HydraConfig
-from lightning.pytorch.callbacks import (
-    DeviceStatsMonitor,
-    LearningRateMonitor,
-    ModelCheckpoint,
-)
+from lightning.fabric.plugins.environments import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from lightning.pytorch.strategies import FSDPStrategy
 from omegaconf import DictConfig, OmegaConf
@@ -17,12 +15,6 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import (
     ShardingStrategy,
 )
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
-from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
-    checkpoint_wrapper,
-    CheckpointImpl,
-    apply_activation_checkpointing,
-)
-from functools import partial
 from transformers import (  # LlavaForConditionalGeneration
     AutoModelForImageTextToText,
     AutoProcessor,
@@ -35,9 +27,14 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="config")
 def finetune(cfg: DictConfig):
+    # Get local rank for distributed training
+    rank = int(os.environ["SLURM_LOCALID"])
+    logger.info(f"Local rank: {rank}")
+
     # Log Hydra working directory
     hydra_wd = HydraConfig.get().runtime.output_dir
-    logger.info(f"Hydra working directory: {hydra_wd}")
+    if rank == 0:
+        logger.info(f"Hydra working directory: {hydra_wd}")
 
     # Set seed for reproducibility
     L.seed_everything(cfg.seed)
@@ -54,30 +51,13 @@ def finetune(cfg: DictConfig):
     model.gradient_checkpointing_enable()
     model.config.use_cache = False
 
-    # Prepare callbacks
-    callbacks = [
-        # Checkpointing
-        ModelCheckpoint(
-            dirpath=hydra_wd + "/checkpoints",
-            filename="{epoch:02d}-{val/loss:.4f}",
-            monitor="val/loss",
-            mode="min",
-            save_top_k=2,
-            save_last=True,
-            every_n_epochs=cfg.checkpoint_every_n_epochs,
-        ),
-        # Monitor learning rate
-        LearningRateMonitor(logging_interval="step"),
-        # Monitor GPU/CPU stats
-        DeviceStatsMonitor(cpu_stats=True),
-    ]
-
     # Prepare loggers
     loggers = [
         CSVLogger(save_dir=f"{hydra_wd}/logs", name="training_logs"),
         WandbLogger(
             project=cfg.wandb.project,
             entity=cfg.wandb.entity,
+            name=cfg.wandb.name,
             save_dir=hydra_wd,
             config=OmegaConf.to_container(cfg, resolve=True),
         ),
@@ -107,9 +87,13 @@ def finetune(cfg: DictConfig):
         default_root_dir=hydra_wd,
         logger=loggers,
         strategy=strategy,
-        callbacks=callbacks,
+        plugins=[SLURMEnvironment()],
         **cfg.trainer,
     )
 
     # Fine-tuning
     trainer.fit(fine_tuner)
+
+    if rank == 0:
+        # Save the final checkpoint
+        model.save_pretrained(f"{hydra_wd}/weights")
