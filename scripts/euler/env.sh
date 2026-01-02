@@ -5,12 +5,10 @@
 
 set -euo pipefail
 
-export PROJECT_DIR=$SCRATCH
-
-dir="$PROJECT_DIR/saliency-alignment"
-export HF_HOME="$dir/.hf/"
-export UV_CACHE_DIR="$dir/.uv/"
-export UV_PROJECT_ENVIRONMENT="$dir/.venv"
+export PROJECT_DIR=$SCRATCH/saliency-alignment
+export HF_HOME="$PROJECT_DIR/.hf/"
+export UV_CACHE_DIR="$PROJECT_DIR/.uv/"
+export UV_PROJECT_ENVIRONMENT="$PROJECT_DIR/.venv"
 
 module load stack/2024-06 gcc/12.2.0 python/3.11.6 cuda/11.3.1 eth_proxy
 

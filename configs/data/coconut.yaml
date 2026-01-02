@@ -1,5 +1,5 @@
 name: coconut
-data_dir: ${oc.env:PROJECT_DIR}/saliency-alignment/data/${.name}
+data_dir: ${oc.env:PROJECT_DIR}/data/${.name}
 seed: 42 # for reproducibility in data splits
 
 # Directory structure

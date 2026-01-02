@@ -1,5 +1,5 @@
 name: grand
-data_dir: ${oc.env:PROJECT_DIR}/saliency-alignment/data/${.name}
+data_dir: ${oc.env:PROJECT_DIR}/data/${.name}
 
 # Dataset configuration
 dataset:
