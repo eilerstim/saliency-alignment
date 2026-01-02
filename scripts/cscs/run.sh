@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=a163
+#SBATCH --account=large-sc-2
 #SBATCH --job-name=finetune
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
@@ -12,9 +12,9 @@
 #SBATCH --environment=saliency
 #SBATCH -C thp_never&nvidia_vboost_enabled
 
-echo "Beginning finetuning at $(date)"
-
 source ./scripts/cscs/env.sh
+
+echo "Beginning finetuning at $(date)"
 
 export CRITERION=alignment
 export LAMBDA=0.5
@@ -22,6 +22,7 @@ export MODEL=llava-v1.6-mistral-7b-hf
 
 export TOKENIZERS_PARALLELISM=false  # Disable tokenizer parallelism to avoid deadlocks
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 srun $PROJECT_DIR/.venv/bin/python -m finetune \
     loss=$CRITERION \

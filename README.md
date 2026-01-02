@@ -89,7 +89,7 @@ A criterion takes as input the following parameters:
 After running the training script with the COCONut dataset for the first time, the data will be automatically downloaded and organized as follows:
 
 ```
-$SCRATCH/saliency-alignment/data/coco/
+$PROJECT_DIR/saliency-alignment/data/coco/
 │
 ├── train/                                 # Training images
 │   ├── 000000000009.jpg

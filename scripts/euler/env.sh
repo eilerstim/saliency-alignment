@@ -5,7 +5,9 @@
 
 set -euo pipefail
 
-dir="$SCRATCH/saliency-alignment"
+export PROJECT_DIR=$SCRATCH
+
+dir="$PROJECT_DIR/saliency-alignment"
 export HF_HOME="$dir/.hf/"
 export UV_CACHE_DIR="$dir/.uv/"
 export UV_PROJECT_ENVIRONMENT="$dir/.venv"
