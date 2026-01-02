@@ -9,7 +9,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=320G
-#SBATCH --environment=finetune
+#SBATCH --environment=saliency
 #SBATCH -C thp_never&nvidia_vboost_enabled
 
 echo "Beginning finetuning at $(date)"
