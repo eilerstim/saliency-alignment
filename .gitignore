@@ -28,3 +28,6 @@ data/
 
 # Docker Images
 *.sqsh
+
+# Dump files
+core_nid*
