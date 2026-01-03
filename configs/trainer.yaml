@@ -5,8 +5,5 @@ accelerator: auto
 gradient_clip_val: null
 enable_model_summary: false
 
-# strategy: ddp
-# strategy: deepspeed_stage_3
-# devices: 4
-# precision: bf16-mixed
-# accumulate_grad_batches: 1
+precision: bf16-mixed
+accumulate_grad_batches: 4
