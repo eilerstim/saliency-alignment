@@ -5,7 +5,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
-from .saliency import SaliencyAccumulator, sdpa_saliency
+from .saliency import get_maps, trace_model
 from .transformer_utils import _get_image_token_id, _get_vision_patch_shape
 
 
@@ -29,9 +29,8 @@ class FineTuner(L.LightningModule):
         # Instantiate auxiliary loss function
         self.auxiliary_loss = instantiate(self.cfg.loss)
 
-        if model.config._attn_implementation != "sdpa":
-            raise ValueError("Saliency loss only works with standard attention (sdpa).")
-        self.accum = SaliencyAccumulator(cfg.dataloader.batch_size, self.patch_shape)
+        # Trace model for saliency computation
+        trace_model(self.model, self.patch_shape)
 
     def forward(self, **batch):
         return self.model(**batch)
@@ -39,11 +38,11 @@ class FineTuner(L.LightningModule):
     def training_step(self, batch: dict, batch_idx: int):
         img_starts = batch.pop("img_starts")
         gen_starts = batch.pop("gen_starts")
-        self.accum.reset()
 
         # Forward pass with saliency accumulation
-        with sdpa_saliency(self.accum, img_starts, gen_starts, self.head_dim):
-            outputs = self.model(**batch, return_dict=True)
+        outputs = self.model(
+            img_starts=img_starts, gen_starts=gen_starts, **batch, return_dict=True
+        )
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -51,7 +50,7 @@ class FineTuner(L.LightningModule):
             labels=batch["labels"],
             input_ids=batch["input_ids"],
             preds=outputs.logits,
-            attentions=self.accum.get_maps(),
+            attentions=get_maps(self.model),
             masks=batch.get("masks"),
         )
 
@@ -70,11 +69,11 @@ class FineTuner(L.LightningModule):
     def validation_step(self, batch: dict, batch_idx: int):
         img_starts = batch.pop("img_starts")
         gen_starts = batch.pop("gen_starts")
-        self.accum.reset()
 
         # Forward pass with saliency accumulation
-        with sdpa_saliency(self.accum, img_starts, gen_starts, self.head_dim):
-            outputs = self.model(**batch, return_dict=True)
+        outputs = self.model(
+            img_starts=img_starts, gen_starts=gen_starts, **batch, return_dict=True
+        )
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -82,7 +81,7 @@ class FineTuner(L.LightningModule):
             labels=batch["labels"],
             input_ids=batch["input_ids"],
             preds=outputs.logits,
-            attentions=self.accum.get_maps(),
+            attentions=get_maps(self.model),
             masks=batch.get("masks"),
         )
 

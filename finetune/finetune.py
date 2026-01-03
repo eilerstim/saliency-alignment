@@ -15,10 +15,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import (
     ShardingStrategy,
 )
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
-from transformers import (  # LlavaForConditionalGeneration
-    AutoModelForImageTextToText,
-    AutoProcessor,
-)
+from transformers import AutoModelForImageTextToText, AutoProcessor
 
 from .lightning import FineTuner
 
@@ -29,7 +26,6 @@ logger = logging.getLogger(__name__)
 def finetune(cfg: DictConfig):
     # Get local rank for distributed training
     rank = int(os.environ["SLURM_LOCALID"])
-    logger.info(f"Local rank: {rank}")
 
     # Log Hydra working directory
     hydra_wd = HydraConfig.get().runtime.output_dir
@@ -41,9 +37,7 @@ def finetune(cfg: DictConfig):
     torch.set_float32_matmul_precision("high")
 
     # Instantiate model and processor
-    model = AutoModelForImageTextToText.from_pretrained(
-        cfg.model.name, attn_implementation="sdpa"
-    )
+    model = AutoModelForImageTextToText.from_pretrained(cfg.model.name)
     processor = AutoProcessor.from_pretrained(cfg.model.name)
 
     # Prepare model for training

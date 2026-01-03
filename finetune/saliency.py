@@ -1,8 +1,68 @@
+from __future__ import annotations
+
 import math
-from contextlib import contextmanager
+from functools import partial, wraps
 
 import torch
-import torch.nn.functional as F
+from transformers import AttentionInterface, PreTrainedModel
+from transformers.integrations.sdpa_attention import sdpa_attention_forward
+
+
+def trace_model(model: PreTrainedModel, patch_shape: tuple[int, int]):
+    """
+    Trace the model to optimize saliency computation.
+
+    Args:
+        model (PreTrainedModel): The model to trace.
+        patch_shape (tuple[int, int]): Shape of the image patches (height, width).
+    """
+    accum = SaliencyAccumulator(patch_shape)
+    model._accum = accum
+    model._scale = 1.0 / math.sqrt(
+        model.config.text_config.hidden_size
+        // model.config.text_config.num_attention_heads
+    )
+    model._img_start = None
+    model._text_start = None
+
+    partial_spda_saliency = partial(
+        spda_saliency,
+        model=model,
+    )
+    AttentionInterface.register("sdpa_saliency", partial_spda_saliency)
+    model.set_attn_implementation({"text_config": "sdpa_saliency"})
+
+    model.forward_original = model.forward
+
+    @wraps(model.forward_original)
+    def wrapped_forward(
+        self,
+        *args,
+        img_start: torch.Tensor | None = None,
+        text_start: torch.Tensor | None = None,
+        **kwargs,
+    ):
+        accum.reset()
+        if img_start is not None:
+            self._img_start = img_start
+        if text_start is not None:
+            self._text_start = text_start
+        return self.forward_original(*args, **kwargs)
+
+    # bind the method back to the model
+    model.forward = wrapped_forward.__get__(model, type(model))
+
+
+def get_maps(model: PreTrainedModel) -> list[torch.Tensor]:
+    """
+    Retrieve the accumulated saliency maps from the model.
+
+    Args:
+        model (PreTrainedModel): The model with accumulated saliency maps.
+    Returns:
+        list[torch.Tensor]: List of accumulated saliency maps for each batch item.
+    """
+    return model._accum.get_maps()
 
 
 class SaliencyAccumulator:
@@ -11,18 +71,12 @@ class SaliencyAccumulator:
     preventing memory overflow from output_attentions.
 
     Args:
-        batch_size (int): The size of the batch for which saliency maps are accumulated.
-        values (list[torch.Tensor | None]): List to hold accumulated saliency maps for each batch item.
+        patch_shapes (tuple[int, int] | list[tuple[int, int]]): Shape of the image patches (height, width).
     """
 
-    def __init__(self, batch_size: int, patch_shape: tuple[int, int]):
-        self.batch_size = batch_size
-        self.patch_shape = patch_shape
-        self.values: list[torch.Tensor | None] = [None] * batch_size
-
-    def reset(self):
-        """Reset the accumulated saliency map."""
-        self.values = [None] * self.batch_size
+    def __init__(self, patch_shapes: tuple[int, int] | list[tuple[int, int]]):
+        self.patch_shapes = patch_shapes
+        self.maps: list[torch.Tensor] | None = None
 
     def accumulate(self, xs: list[torch.Tensor]):
         """
@@ -31,8 +85,21 @@ class SaliencyAccumulator:
         Args:
             xs (list[torch.Tensor]): List of saliency maps to accumulate, one per batch item.
         """
-        for i, x in enumerate(xs):
-            self.values[i] = x if self.values[i] is None else self.values[i] + x
+        if self.maps is None:
+            if isinstance(self.patch_shapes, list) and len(self.patch_shapes) != len(
+                xs
+            ):
+                raise ValueError(
+                    "Length of patch_shapes must match number of saliency maps."
+                )
+            self.maps = xs
+        else:
+            if len(self.maps) != len(xs):
+                raise ValueError(
+                    "Number of saliency maps to accumulate does not match existing maps."
+                )
+            for i, x in enumerate(xs):
+                self.maps[i] = self.maps[i] + x
 
     def get_maps(self) -> list[torch.Tensor]:
         """
@@ -41,10 +108,23 @@ class SaliencyAccumulator:
         Returns:
             list[torch.Tensor]: List of accumulated saliency maps for each batch item.
         """
-        if any(v is None for v in self.values):
-            raise ValueError("Saliency maps have not been fully accumulated.")
+        if self.maps is None:
+            return [] # For now for the initial val check
+            # raise ValueError("Saliency maps have not been accumulated.")
 
-        return [v.view(v.contiguous().size(0), *self.patch_shape) for v in self.values]
+        if isinstance(self.patch_shapes, tuple):
+            patch_shapes = [self.patch_shapes] * len(self.maps)
+        else:
+            patch_shapes = self.patch_shapes
+
+        return [
+            v.reshape(v.size(0), *patch)
+            for v, patch in zip(self.maps, patch_shapes, strict=True)
+        ]
+
+    def reset(self):
+        """Reset the accumulated saliency maps."""
+        self.maps = None
 
 
 @torch.compile(mode="reduce-overhead")
@@ -70,44 +150,50 @@ def _saliency_from_attentions(
     return scores.mean(0)  # [T_text, S_img]
 
 
-orig = F.scaled_dot_product_attention
-
-
-@contextmanager
-def sdpa_saliency(
-    accum: SaliencyAccumulator,
-    img_start: torch.Tensor,
-    text_start: torch.Tensor,
-    head_dim: int,
-):
+def spda_saliency(
+    module: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: torch.Tensor | None = None,
+    model: PreTrainedModel = None,
+    *args,
+    **kwargs,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
-    Augments the standard scaled dot-product attention with accumulated saliency maps.
+    Drop-in replacement for F.scaled_dot_product_attention that will record
+    saliency *if* a saliency_context is active.
 
-    Args:
-        accum (SaliencyAccumulator): The accumulator for saliency maps.
-        img_start (torch.Tensor): Tensor of image token start indices per batch item.
-        text_start (torch.Tensor): Tensor of text token start indices per batch item.
-        head_dim (int): Dimension of each attention head.
+    q,k,v expected: [B, H, S, D]
     """
+    if model._img_start is None or model._text_start is None:
+        return sdpa_attention_forward(
+            module,
+            query,
+            key,
+            value,
+            attention_mask,
+            *args,
+            **kwargs,
+        )
+    maps: list[torch.Tensor] = [
+        _saliency_from_attentions(
+            query[i],
+            key[i],
+            model._img_start[i],
+            model._text_start[i],
+            model._scale,
+        )
+        for i in range(query.size(0))
+    ]
 
-    scale = 1.0 / math.sqrt(head_dim)
-
-    def wrapped_sdpa(q, k, v, *args, **kwargs):
-        # q, k: [batch_size, num_heads, seq_len, head_dim]
-
-        if not kwargs.get("is_causal", False):  # e.g. ViT
-            return orig(q, k, v, *args, **kwargs)
-
-        saliency_maps: list[torch.Tensor] = [
-            _saliency_from_attentions(q[i], k[i], img_start[i], text_start[i], scale)
-            for i in range(q.size(0))
-        ]
-        accum.accumulate(saliency_maps)
-        return orig(q, k, v, *args, **kwargs)
-
-    F.scaled_dot_product_attention = wrapped_sdpa
-    try:
-        yield
-    finally:
-        pass
-        # F.scaled_dot_product_attention = orig
+    model._accum.accumulate(maps)
+    return sdpa_attention_forward(
+        module,
+        query,
+        key,
+        value,
+        attention_mask,
+        *args,
+        **kwargs,
+    )
