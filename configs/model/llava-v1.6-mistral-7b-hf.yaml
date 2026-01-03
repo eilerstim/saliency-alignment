@@ -1,1 +1,4 @@
 name: llava-hf/llava-v1.6-mistral-7b-hf
+# llava-v1.6-next uses a special image tokenizer, called "AnyRes",
+# which lends itself poorly to our saliency methods. 
+# For more information, see: https://llava-vl.github.io/blog/2024-01-30-llava-next/

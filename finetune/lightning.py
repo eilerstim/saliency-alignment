@@ -39,6 +39,7 @@ class FineTuner(L.LightningModule):
     def training_step(self, batch: dict, batch_idx: int):
         img_starts = batch.pop("img_starts")
         gen_starts = batch.pop("gen_starts")
+        self.accum.reset()
 
         # Forward pass with saliency accumulation
         with sdpa_saliency(self.accum, img_starts, gen_starts, self.head_dim):
@@ -69,11 +70,11 @@ class FineTuner(L.LightningModule):
     def validation_step(self, batch: dict, batch_idx: int):
         img_starts = batch.pop("img_starts")
         gen_starts = batch.pop("gen_starts")
+        self.accum.reset()
 
         # Forward pass with saliency accumulation
         with sdpa_saliency(self.accum, img_starts, gen_starts, self.head_dim):
-            with torch.inference_mode():
-                outputs = self.model(**batch, return_dict=True)
+            outputs = self.model(**batch, return_dict=True)
         loss = outputs.loss
 
         # Calculate auxiliary loss

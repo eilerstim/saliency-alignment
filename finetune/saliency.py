@@ -64,9 +64,13 @@ def _saliency_from_attentions(
         rep = Hq // Hkv
         k = k.repeat_interleave(rep, dim=0)  # [Hq, S, D]
 
-    scores = (q @ k.transpose(-2, -1)) * scale  # [Hq, S, S]
-    s = scores[:, text_start:, img_start:text_start]  # [Hq, T_text, S_img]
-    return s.mean(0)  # [T_text, S_img]
+    q_txt = q[:, text_start:, :]  # [Hq, T_text, D]
+    k_img = k[:, img_start:text_start, :]  # [Hq, S_img, D]
+    scores = (q_txt @ k_img.transpose(-2, -1)) * scale  # [Hq, T_text, S_img]
+    return scores.mean(0)  # [T_text, S_img]
+
+
+orig = F.scaled_dot_product_attention
 
 
 @contextmanager
@@ -85,9 +89,7 @@ def sdpa_saliency(
         text_start (torch.Tensor): Tensor of text token start indices per batch item.
         head_dim (int): Dimension of each attention head.
     """
-    accum.reset()
 
-    orig = F.scaled_dot_product_attention
     scale = 1.0 / math.sqrt(head_dim)
 
     def wrapped_sdpa(q, k, v, *args, **kwargs):
@@ -107,4 +109,5 @@ def sdpa_saliency(
     try:
         yield
     finally:
-        F.scaled_dot_product_attention = orig
+        pass
+        # F.scaled_dot_product_attention = orig

@@ -48,6 +48,9 @@ def finetune(cfg: DictConfig):
 
     # Prepare model for training
     model.train()
+    model.gradient_checkpointing_enable(
+        gradient_checkpointing_kwargs={"use_reentrant": False}
+    )
     model.config.use_cache = False
 
     # Prepare loggers
@@ -77,8 +80,10 @@ def finetune(cfg: DictConfig):
             reduce_dtype=torch.bfloat16,
             buffer_dtype=torch.bfloat16,
         ),
+        use_orig_params=True,
+        sync_module_states=True,
         cpu_offload=False,
-        activation_checkpointing_policy=auto_wrap_policy,
+        # activation_checkpointing_policy=auto_wrap_policy,
         limit_all_gathers=True,
     )
 
