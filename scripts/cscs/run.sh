@@ -14,7 +14,6 @@
 
 source ./scripts/cscs/env.sh
 
-echo "Beginning finetuning at $(date)"
 
 export CRITERION=default
 export LAMBDA=0.5
@@ -24,6 +23,8 @@ export TOKENIZERS_PARALLELISM=false  # Disable tokenizer parallelism to avoid de
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
+
+echo "Beginning finetuning of $MODEL with $CRITERION loss (w=$LAMBDA) at $(date)"
 
 srun $PROJECT_DIR/.venv/bin/python -m finetune \
     loss=$CRITERION \
