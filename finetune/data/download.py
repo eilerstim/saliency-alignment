@@ -537,7 +537,7 @@ def download_png(data_cfg: DictConfig):
 
 @hydra.main(
     version_base="1.3",
-    config_path="../../../configs/data/",
+    config_path="../../configs/data/",
     config_name="png",
 )
 def main(cfg: DictConfig) -> None:
