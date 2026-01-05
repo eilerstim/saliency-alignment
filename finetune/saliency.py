@@ -171,7 +171,7 @@ def spda_saliency(
 
     q,k,v expected: [B, H, S, D]
     """
-    if model._img_starts is None or model._text_starts is None:
+    if model._img_starts is None or model._gen_starts is None:
         return sdpa_attention_forward(
             module,
             query,
