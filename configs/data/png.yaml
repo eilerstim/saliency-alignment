@@ -26,6 +26,7 @@
 
 defaults:
   - coco  # inherit base COCO paths
+  - _self_
 
 # Dataset configuration
 dataset:

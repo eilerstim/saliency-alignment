@@ -144,7 +144,7 @@ class FineTuner(L.LightningModule):
         """Wrapper around the collate function to bind the processor."""
         collate_fn = instantiate(collator_cfg, processor=self.processor, _partial_=True)
 
-        def wrapper(batch: list[dict]) -> dict:
+        def wrapper(batch: dict) -> dict:
             batch = collate_fn(batch)
 
             input_ids = batch["input_ids"]
@@ -155,18 +155,31 @@ class FineTuner(L.LightningModule):
             )
 
             img_starts = torch.full((B,), S, dtype=torch.long, device=input_ids.device)
-            gen_starts = torch.zeros((B,), dtype=torch.long, device=input_ids.device)
+            img_ends = torch.zeros((B,), dtype=torch.long, device=input_ids.device)
 
             img_starts.scatter_reduce_(0, batch_idx, seq_idx, reduce="amin")
-            gen_starts.scatter_reduce_(0, batch_idx, seq_idx + 1, reduce="amax")
+            img_ends.scatter_reduce_(0, batch_idx, seq_idx + 1, reduce="amax")
 
             if (img_starts == S).any():
                 raise RuntimeError("Sample without image tokens")
+
+            segment_ids = batch["segment_ids"]
+            B, S, _ = segment_ids.shape
+
+            # positions where all segments are valid
+            batch_idx, seq_idx = (segment_ids != -1).any(dim=-1).nonzero(as_tuple=True)
+
+            gen_starts = torch.full((B,), S, dtype=torch.long, device=input_ids.device)
+            gen_starts.scatter_reduce_(0, batch_idx, seq_idx, reduce="amin")
+
+            if (gen_starts == S).any():
+                raise RuntimeError("Sample without generation tokens")
 
             if (img_starts >= gen_starts).any():
                 raise RuntimeError("Malformed image spans in input_ids.")
 
             batch["img_starts"] = img_starts
+            batch["img_ends"] = img_ends
             batch["gen_starts"] = gen_starts
 
             return batch

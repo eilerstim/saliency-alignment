@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=a163
-#SBATCH --time=12:00:00
+#SBATCH --time=2:00:00
 #SBATCH --job-name=data
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
@@ -15,7 +15,7 @@ source ./scripts/cscs/env.sh
 
 echo "Beginning downloading data at $(date)"
 
-python -m finetune.data.coconut.download \
+python -m finetune.data.download \
     hydra.run.dir=outputs/${SLURM_JOB_NAME}_${SLURM_JOB_ID}
 
 echo "Finished downloading data at $(date)"

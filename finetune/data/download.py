@@ -480,6 +480,7 @@ def download_coconut(data_cfg: DictConfig):
     else:
         logger.info(f"Captions already extracted at {output_captions_dir}")
 
+
 def download_png(data_cfg: DictConfig):
     """Download Panoptic Narrative Grounding (PNG) dataset.
 
@@ -505,7 +506,6 @@ def download_png(data_cfg: DictConfig):
            |_ panoptic_val2017.json   (from COCO)
     """
     png_cfg = data_cfg.png
-    data_dir = Path(data_cfg.data_dir)
     features_dir = Path(data_cfg.features_dir)
 
     features_dir.mkdir(parents=True, exist_ok=True)
