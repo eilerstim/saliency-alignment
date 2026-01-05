@@ -1,0 +1,63 @@
+# Base COCO configuration - shared by coconut and png datasets
+#
+# Folder structure:
+# data/coco/
+# ├── images/
+# │   ├── train2017/
+# │   │   ├── 000000000009.jpg
+# │   │   ├── 000000000025.jpg
+# │   │   └── ...
+# │   └── val2017/
+# │       ├── 000000000139.jpg
+# │       ├── 000000000285.jpg
+# │       └── ...
+# ├── annotations/
+# │   ├── panoptic_segmentation/
+# │   │   ├── train2017/
+# │   │   │   ├── 000000000009.png
+# │   │   │   └── ...
+# │   │   └── val2017/
+# │   │       ├── 000000000139.png
+# │   │       └── ...
+# │   ├── panoptic_train2017.json
+# │   ├── panoptic_val2017.json
+# │   ├── instances_train2017.json
+# │   ├── instances_val2017.json
+# │   ├── captions_train2017.json
+# │   ├── captions_val2017.json
+# │   ├── png_coco_train2017.json      # PNG-COCO annotations
+# │   └── png_coco_val2017.json        # PNG-COCO annotations
+# └── features/                         # Precomputed features (optional)
+
+name: coco
+data_dir: ${oc.env:PROJECT_DIR}/data/${.name}
+seed: 42  # for reproducibility in data splits
+
+# Directory structure
+images_dir: ${.data_dir}/images
+annotations_dir: ${.data_dir}/annotations
+features_dir: ${.data_dir}/features
+
+# Train/val splits
+train:
+  split: train
+  name: train2017
+  images_dir: ${..images_dir}/${.name}
+  url: http://images.cocodataset.org/zips/train2017.zip
+
+validation:
+  split: validation
+  name: val2017
+  images_dir: ${..images_dir}/${.name}
+  url: http://images.cocodataset.org/zips/val2017.zip
+
+# COCO annotations download info
+annotations:
+  name: annotations
+  url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+
+# Panoptic segmentation
+panoptic:
+  name: panoptic
+  segmentation_dir: ${..annotations_dir}/panoptic_segmentation
+  url: http://images.cocodataset.org/annotations/panoptic_annotations_trainval2017.zip

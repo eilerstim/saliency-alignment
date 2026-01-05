@@ -495,15 +495,6 @@ def download_png(data_cfg: DictConfig):
         |_ images/
         |  |_ train2017/        (from COCO)
         |  |_ val2017/          (from COCO)
-        |_ features/
-        |  |_ train2017/
-        |  |  |_ mask_features/
-        |  |  |_ sem_seg_features/
-        |  |  |_ panoptic_seg_predictions/
-        |  |_ val2017/
-        |     |_ mask_features/
-        |     |_ sem_seg_features/
-        |     |_ panoptic_seg_predictions/
         |_ annotations/
            |_ png_coco_train2017.json
            |_ png_coco_val2017.json
@@ -540,48 +531,6 @@ def download_png(data_cfg: DictConfig):
         logger.info(f"Downloaded PNG val annotations to {ann_val_path}")
     else:
         logger.info(f"PNG val annotations already exist at {ann_val_path}")
-
-    # Download val2017 features
-    val_features_dir = features_dir / "val2017"
-    val_features_complete = (
-        (val_features_dir / "mask_features").exists()
-        and len(list((val_features_dir / "mask_features").glob("*"))) > 0
-        and (val_features_dir / "sem_seg_features").exists()
-        and len(list((val_features_dir / "sem_seg_features").glob("*"))) > 0
-        and (val_features_dir / "panoptic_seg_predictions").exists()
-        and len(list((val_features_dir / "panoptic_seg_predictions").glob("*"))) > 0
-    )
-
-    if not val_features_complete:
-        features_zip_path = data_dir / "val2017_features.zip"
-        if not features_zip_path.exists():
-            logger.info("Downloading val2017 features...")
-            urllib.request.urlretrieve(png_cfg.features_val_url, features_zip_path)
-            logger.info("Downloaded val2017 features")
-
-        logger.info("Extracting val2017 features...")
-        with zipfile.ZipFile(features_zip_path, "r") as zip_ref:
-            zip_ref.extractall(features_dir)
-        features_zip_path.unlink()
-        logger.info("Extracted val2017 features")
-    else:
-        logger.info("Val2017 features already exist")
-
-    # For train2017 features, we need to run feature extraction using the PNG repo
-    train_features_dir = features_dir / "train2017"
-    train_features_complete = (
-        (train_features_dir / "mask_features").exists()
-        and len(list((train_features_dir / "mask_features").glob("*"))) > 0
-        and (train_features_dir / "sem_seg_features").exists()
-        and len(list((train_features_dir / "sem_seg_features").glob("*"))) > 0
-        and (train_features_dir / "panoptic_seg_predictions").exists()
-        and len(list((train_features_dir / "panoptic_seg_predictions").glob("*"))) > 0
-    )
-
-    if not train_features_complete:
-        logger.info("Remember to generate train2017 features using the PNG repo.")
-    else:
-        logger.info("Train2017 features already exist")
 
     logger.info("PNG dataset download and setup complete!")
 

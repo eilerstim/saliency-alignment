@@ -24,7 +24,7 @@ outputs/
 logs/
 slurm_logs/
 
-data/
+/data/
 
 # Docker Images
 *.sqsh

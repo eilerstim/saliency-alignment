@@ -1,0 +1,48 @@
+# PNG-COCO (Panoptic Narrative Grounding) dataset configuration
+# Extends base COCO config with PNG-COCO phrase-level grounding annotations
+#
+# PNG-COCO provides phrase-to-segment mappings where each caption phrase
+# is linked to panoptic segment IDs in the image.
+#
+# Additional files (extends coco.yaml):
+# data/coco/annotations/
+# ├── png_coco_train2017.json          # PNG train annotations
+# └── png_coco_val2017.json            # PNG val annotations
+#
+# Annotation format (png_coco_*.json):
+# [
+#   {
+#     "image_id": "322944",
+#     "annotator_id": 38,
+#     "caption": "A woman is holding teddy bear toy...",
+#     "segments": [
+#       {"utterance": "a", "segment_ids": [], "plural": false, "noun": false},
+#       {"utterance": "woman", "segment_ids": ["4673118"], "plural": false, "noun": true},
+#       ...
+#     ]
+#   },
+#   ...
+# ]
+
+defaults:
+  - coco  # inherit base COCO paths
+
+# Dataset configuration
+dataset:
+  _target_: finetune.data.png.dataset.PNGCOCODataset
+
+# Collator configuration
+collator:
+  _target_: finetune.data.png.collator.train_collate_fn
+  # processor will be passed at runtime via partial
+
+eval_collator:
+  _target_: finetune.data.png.collator.eval_collate_fn
+  # processor will be passed at runtime via partial
+
+# PNG-COCO specific paths
+png:
+  ann_file_train: ${..annotations_dir}/png_coco_train2017.json
+  ann_file_val: ${..annotations_dir}/png_coco_val2017.json
+  ann_file_train_url: https://lambda004.uniandes.edu.co/panoptic-narrative-grounding/annotations/png_coco_train2017.json
+  ann_file_val_url: https://lambda004.uniandes.edu.co/panoptic-narrative-grounding/annotations/png_coco_val2017.json
