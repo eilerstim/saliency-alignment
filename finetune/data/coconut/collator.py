@@ -42,6 +42,20 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     masks = []
     segments_infos = []
 
+    # User-only messages template (for finding caption start)
+    user_messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": "Describe the image in detail."},
+            ],
+        },
+    ]
+    prompt_only = processor.apply_chat_template(
+        user_messages, tokenize=False, add_generation_prompt=True
+    )
+
     for example in examples:
         image = example["image"]
         caption = example["caption"]  # annotated: contains <id: text>
@@ -92,29 +106,36 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     )
 
     input_ids = batch["input_ids"]
+    batch_size, seq_len = input_ids.shape
 
     # Labels: ignore padding tokens
     labels = input_ids.clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
     # Build annotation_ids aligned 1:1 with input_ids
-    batch_size, seq_len = input_ids.shape
     annotation_ids_lists: list[list[list[int]]] = [
         [[] for _ in range(seq_len)] for _ in range(batch_size)
     ]
 
     for i, caption in enumerate(captions_annotated):
+        # Process prompt-only WITH this example's image to find where caption starts
+        # (image placeholder expands to variable tokens depending on image size)
+        prompt_only_batch = processor(
+            text=[prompt_only],
+            images=[images[i]],
+            padding=False,
+            return_tensors="pt",
+        )
+        caption_start = prompt_only_batch["input_ids"].shape[1]
+
+        # Mask prompt tokens for this example
+        labels[i, :caption_start] = -100
+
         # Tokenize annotated caption to get per-token annotation ids (list of lists) in caption space
         cap_token_ids, cap_ann_ids = tokenize_with_annotations(
             caption, processor.tokenizer, add_special_tokens=False
         )
 
-        # Find where the assistant tokens (caption) start in labels
-        valid_positions = (labels[i] != -100).nonzero(as_tuple=True)[0]
-        if len(valid_positions) == 0:
-            continue
-
-        caption_start = valid_positions[0].item()
         caption_len = min(len(cap_ann_ids), seq_len - caption_start)
 
         # Truncate/pad annotation ids to match caption_len

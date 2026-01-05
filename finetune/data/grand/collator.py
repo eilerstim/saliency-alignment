@@ -38,6 +38,20 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     rle_masks_list = []
     phrase_positions_list = []
 
+    # User-only messages template (for finding caption start)
+    user_messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": "Describe the image in detail."},
+            ],
+        },
+    ]
+    prompt_only = processor.apply_chat_template(
+        user_messages, tokenize=False, add_generation_prompt=True
+    )
+
     for example in examples:
         image = example["image"]
         caption = example["caption"]
@@ -81,26 +95,32 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     )
 
     input_ids = batch["input_ids"]
+    batch_size, seq_len = input_ids.shape
 
     # Labels: ignore padding tokens
     labels = input_ids.clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
     # Build token-to-object mappings by matching phrases
-    batch_size, seq_len = input_ids.shape
     annotation_ids_lists: list[list[list[int]]] = [
         [[] for _ in range(seq_len)] for _ in range(batch_size)
     ]
 
     for i, caption in enumerate(captions_list):
+        # Process prompt-only WITH this example's image to find where caption starts
+        # (image placeholder expands to variable tokens depending on image size)
+        prompt_only_batch = processor(
+            text=[prompt_only],
+            images=[images[i]],
+            padding=False,
+            return_tensors="pt",
+        )
+        caption_start = prompt_only_batch["input_ids"].shape[1]
+
+        # Mask prompt tokens for this example
+        labels[i, :caption_start] = -100
+
         phrase_positions = phrase_positions_list[i]
-
-        # Find where the assistant tokens (caption) start in labels
-        valid_positions = (labels[i] != -100).nonzero(as_tuple=True)[0]
-        if len(valid_positions) == 0:
-            continue
-
-        caption_start = valid_positions[0].item()
 
         # Tokenize just the caption to get token offsets
         caption_encoding = processor.tokenizer(
@@ -112,8 +132,6 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         for phrase_start, phrase_end, obj_ids in phrase_positions:
             # Find tokens that overlap with this phrase using character positions
             for tok_idx, (tok_start, tok_end) in enumerate(token_offsets):
-                if tok_idx >= len(valid_positions):
-                    break
                 # Check if token overlaps with phrase
                 if tok_start < phrase_end and tok_end > phrase_start:
                     global_tok_idx = caption_start + tok_idx

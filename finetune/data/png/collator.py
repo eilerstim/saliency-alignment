@@ -36,6 +36,21 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     texts = []
     all_segments = []
     panoptic_masks = []
+    prompt_lengths = []  # Track prompt length for each example
+
+    # User-only messages template (for finding caption start)
+    user_messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": "Describe the image in detail."},
+            ],
+        },
+    ]
+    prompt_only = processor.apply_chat_template(
+        user_messages, tokenize=False, add_generation_prompt=True
+    )
 
     for example in examples:
         image = example["image"]
@@ -84,13 +99,13 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     )
 
     input_ids = batch["input_ids"]
+    batch_size, seq_len = input_ids.shape
 
     # Labels: ignore padding tokens
     labels = input_ids.clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
     # First pass: tokenize all captions and find max_segments
-    batch_size, seq_len = input_ids.shape
     tokenized_segments = []
     max_segments = 1  # At least 1 to avoid empty dimension
 
@@ -112,12 +127,19 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     batch_idx, token_idx, seg_idx, values = [], [], [], []
 
     for i, cap_segment_ids in enumerate(tokenized_segments):
-        # Find where the caption starts in labels
-        valid_positions = (labels[i] != -100).nonzero(as_tuple=True)[0]
-        if len(valid_positions) == 0:
-            continue
+        # Process prompt-only WITH this example's image to find where caption starts
+        # (image placeholder expands to variable tokens depending on image size)
+        prompt_only_batch = processor(
+            text=[prompt_only],
+            images=[images[i]],
+            padding=False,
+            return_tensors="pt",
+        )
+        caption_start = prompt_only_batch["input_ids"].shape[1]
 
-        caption_start = valid_positions[0].item()
+        # Mask prompt tokens for this example
+        labels[i, :caption_start] = -100
+
         caption_len = min(len(cap_segment_ids), seq_len - caption_start)
 
         for j, seg_ids in enumerate(cap_segment_ids[:caption_len]):
