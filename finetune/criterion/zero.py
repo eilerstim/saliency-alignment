@@ -13,6 +13,7 @@ class ZeroCriterion(Criterion):
         self,
         labels: torch.Tensor,
         input_ids: torch.Tensor,
+        segment_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
         masks: list[torch.Tensor],

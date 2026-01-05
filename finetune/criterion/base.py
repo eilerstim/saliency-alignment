@@ -10,8 +10,6 @@ class Criterion(ABC):
 
     Args:
         weight (float): Weighting factor for the loss. Default is 1.0.
-        image_token_id (int): Token ID representing the image token in the input. Default is 1.
-        patch_shape (tuple[int, int]): Shape of image patches (height, width). Default is (0, 0).
 
     Methods:
         compute_loss(labels, preds, attentions, **kwargs) -> float:
@@ -26,6 +24,7 @@ class Criterion(ABC):
         self,
         labels: torch.Tensor,
         input_ids: torch.Tensor,
+        segment_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
         masks: list[torch.Tensor],
@@ -34,6 +33,7 @@ class Criterion(ABC):
         loss = self.compute_loss(
             labels=labels,
             input_ids=input_ids,
+            segment_ids=segment_ids,
             preds=preds,
             attentions=attentions,
             masks=masks,
@@ -46,6 +46,7 @@ class Criterion(ABC):
         self,
         labels: torch.Tensor,
         input_ids: torch.Tensor,
+        segment_ids: torch.Tensor,
         preds: torch.Tensor,
         attentions: Sequence[torch.Tensor],
         masks: list[torch.Tensor],
@@ -58,7 +59,7 @@ class Criterion(ABC):
             input_ids (torch.Tensor): Input token IDs. [batch_size, seq_len]
             preds (torch.Tensor): The model prediction logits. [batch_size, seq_len, vocab_size]
             attentions (Sequence[torch.Tensor]): The attention weights from the model. [List of tensors with shape [seq_len, H, W]]
-            masks (list[torch.Tensor]): Binary annotation masks. List of [seq_len, H, W]. Zero tensors indicate no annotation.
+            masks (list[torch.Tensor]): Binary annotation masks. List of [H, W]. Zero tensors indicate no annotation.
             **kwargs (Any): Additional keyword arguments
 
         Returns:
