@@ -22,8 +22,9 @@ def trace_model(model: PreTrainedModel, patch_shape: tuple[int, int]):
         model.config.text_config.hidden_size
         // model.config.text_config.num_attention_heads
     )
-    model._img_start = None
-    model._text_start = None
+    model._img_starts = None
+    model._img_ends = None
+    model._gen_starts = None
 
     partial_spda_saliency = partial(
         spda_saliency,
@@ -38,15 +39,18 @@ def trace_model(model: PreTrainedModel, patch_shape: tuple[int, int]):
     def wrapped_forward(
         self,
         *args,
-        img_start: torch.Tensor | None = None,
-        text_start: torch.Tensor | None = None,
+        img_starts: torch.Tensor | None = None,
+        img_ends: torch.Tensor | None = None,
+        gen_starts: torch.Tensor | None = None,
         **kwargs,
     ):
         accum.reset()
-        if img_start is not None:
-            self._img_start = img_start
-        if text_start is not None:
-            self._text_start = text_start
+        if img_starts is not None:
+            self._img_starts = img_starts
+        if img_ends is not None:
+            self._img_ends = img_ends
+        if gen_starts is not None:
+            self._gen_starts = gen_starts
         return self.forward_original(*args, **kwargs)
 
     # bind the method back to the model
@@ -109,7 +113,7 @@ class SaliencyAccumulator:
             list[torch.Tensor]: List of accumulated saliency maps for each batch item.
         """
         if self.maps is None:
-            return [] # For now for the initial val check
+            return []  # For now for the initial val check
             # raise ValueError("Saliency maps have not been accumulated.")
 
         if isinstance(self.patch_shapes, tuple):
@@ -132,7 +136,8 @@ def _saliency_from_attentions(
     q: torch.Tensor,
     k: torch.Tensor,
     img_start: torch.Tensor,
-    text_start: torch.Tensor,
+    img_end: torch.Tensor,
+    gen_start: torch.Tensor,
     scale: float,
 ):
     Hq = q.shape[0]
@@ -144,8 +149,8 @@ def _saliency_from_attentions(
         rep = Hq // Hkv
         k = k.repeat_interleave(rep, dim=0)  # [Hq, S, D]
 
-    q_txt = q[:, text_start:, :]  # [Hq, T_text, D]
-    k_img = k[:, img_start:text_start, :]  # [Hq, S_img, D]
+    q_txt = q[:, gen_start:, :]  # [Hq, T_text, D]
+    k_img = k[:, img_start:img_end, :]  # [Hq, S_img, D]
     scores = (q_txt @ k_img.transpose(-2, -1)) * scale  # [Hq, T_text, S_img]
     return scores.mean(0)  # [T_text, S_img]
 
@@ -166,7 +171,7 @@ def spda_saliency(
 
     q,k,v expected: [B, H, S, D]
     """
-    if model._img_start is None or model._text_start is None:
+    if model._img_starts is None or model._text_starts is None:
         return sdpa_attention_forward(
             module,
             query,
@@ -180,8 +185,9 @@ def spda_saliency(
         _saliency_from_attentions(
             query[i],
             key[i],
-            model._img_start[i],
-            model._text_start[i],
+            model._img_starts[i],
+            model._img_ends[i],
+            model._gen_starts[i],
             model._scale,
         )
         for i in range(query.size(0))
