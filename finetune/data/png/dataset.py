@@ -69,14 +69,14 @@ class PNGCOCODataset(Dataset):
 
         # Load PNG-COCO annotations from config paths
         png_ann_file = (
-            data_cfg.png.ann_file_train if split == "train" else data_cfg.png.ann_file_val
+            data_cfg.png.ann_file_train
+            if split == "train"
+            else data_cfg.png.ann_file_val
         )
         with open(png_ann_file) as f:
             self.annotations = json.load(f)
 
-        logger.info(
-            f"Loaded {len(self.annotations)} annotations for split '{split}'"
-        )
+        logger.info(f"Loaded {len(self.annotations)} annotations for split '{split}'")
 
     def __len__(self):
         """Return the total number of annotations in the dataset.

@@ -51,7 +51,7 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         # Parse caption and build a clean version without markers
         parsed_segments = parse_annotated_caption(caption)
         clean_caption = "".join(text for _, text in parsed_segments)
-        
+
         if not clean_caption.strip():
             return None  # Skip empty captions
 

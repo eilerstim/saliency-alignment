@@ -170,7 +170,6 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     return {
         **batch,
         "input_ids": input_ids,
-        "pixel_values": pixel_values,
         "labels": labels,
         "masks": annotation_masks,
     }

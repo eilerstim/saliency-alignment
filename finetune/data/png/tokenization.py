@@ -158,7 +158,9 @@ def batch_tokenize_png_captions(
         for i in range(len(batch_token_ids)):
             padding_length = max_len - len(batch_token_ids[i])
             if padding_length > 0:
-                batch_token_ids[i] = batch_token_ids[i] + [pad_token_id] * padding_length
+                batch_token_ids[i] = (
+                    batch_token_ids[i] + [pad_token_id] * padding_length
+                )
                 batch_segment_ids[i] = batch_segment_ids[i] + [[]] * padding_length
 
     return batch_token_ids, batch_segment_ids
