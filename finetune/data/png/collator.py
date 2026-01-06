@@ -4,6 +4,7 @@ import torch
 from transformers import ProcessorMixin
 
 from finetune.data.png.tokenization import build_clean_caption, tokenize_png_caption
+from finetune.data.utils import find_sequence
 
 
 def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
@@ -12,6 +13,29 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     This function processes a batch of examples from the PNG-COCO dataset, creating
     clean captions for the model while separately tracking which tokens correspond
     to which segment IDs for custom loss computation.
+
+    Caption Alignment:
+        The function identifies where the caption starts in the tokenized sequence by:
+        1. Extracting the assistant header (e.g., " ASSISTANT:") by comparing chat
+           templates with and without `add_generation_prompt=True`
+        2. Searching for this header in the processed `input_ids`
+        3. The caption tokens begin immediately after the header
+
+        This approach is robust to variable image token counts (e.g., dynamic resolution
+        models) since it searches for the header in the final tokenized sequence.
+
+    Label Masking:
+        Labels are set to -100 (ignored in loss computation) for:
+        - All prompt tokens (BOS, user message, image tokens, assistant header)
+        - Padding tokens
+        
+        Only the caption tokens (assistant's response) have valid labels, ensuring
+        the model is trained only to generate the caption, not predict the prompt.
+
+    Segment ID Alignment:
+        Segment IDs from PNG-COCO annotations are aligned token-by-token with the
+        caption portion of `input_ids`. Each token can have multiple segment IDs
+        (e.g., when a word refers to multiple objects).
 
     Args:
         examples: List of dictionaries, each containing:
@@ -24,12 +48,14 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
 
     Returns:
         dict:
-            - input_ids (torch.Tensor): Token IDs of shape [batch_size, seq_len]
-            - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
+            - input_ids (torch.Tensor): Token IDs [batch_size, seq_len]
+            - attention_mask (torch.Tensor): Attention mask [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
-            - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
-            - segment_ids (torch.Tensor): Per-token segment IDs [batch_size, seq_len, max_segments], padded with -1
-            - panoptic_masks (list[torch.Tensor]): Panoptic masks [batch_size, H, W] containing segment IDs
+            - labels (torch.Tensor): Training targets [batch_size, seq_len]
+                -100 for prompt/padding tokens, token IDs for caption tokens
+            - segment_ids (torch.Tensor): Per-token segment IDs 
+                [batch_size, seq_len, max_segments], padded with -1
+            - masks (list[torch.Tensor]): Panoptic masks [H, W] containing segment IDs
             - **batch: Additional fields provided by the processor
     """
     images = []
@@ -37,19 +63,21 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     all_segments = []
     panoptic_masks = []
 
-    # User-only messages template (for finding caption start)
+    # Get the assistant header tokens by comparing with/without generation prompt
     user_messages = [
         {
             "role": "user",
-            "content": [
-                {"type": "image"},
-                {"type": "text", "text": "Describe the image in detail."},
-            ],
+            "content": [{"type": "text", "text": "X"}],
         },
     ]
-    prompt_only = processor.apply_chat_template(
+    without_gen = processor.apply_chat_template(
+        user_messages, tokenize=False, add_generation_prompt=False
+    )
+    with_gen = processor.apply_chat_template(
         user_messages, tokenize=False, add_generation_prompt=True
     )
+    assistant_header = with_gen[len(without_gen):]
+    suffix_tokens = processor.tokenizer.encode(assistant_header, add_special_tokens=False)
 
     for example in examples:
         image = example["image"]
@@ -126,15 +154,9 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     batch_idx, token_idx, seg_idx, values = [], [], [], []
 
     for i, cap_segment_ids in enumerate(tokenized_segments):
-        # Process prompt-only WITH this example's image to find where caption starts
-        # (image placeholder expands to variable tokens depending on image size)
-        prompt_only_batch = processor(
-            text=[prompt_only],
-            images=[images[i]],
-            padding=False,
-            return_tensors="pt",
-        )
-        caption_start = prompt_only_batch["input_ids"].shape[1]
+        # Find caption start by searching for suffix tokens in input_ids
+        # (more efficient than processing prompt with each image)
+        caption_start = find_sequence(input_ids[i], suffix_tokens) + len(suffix_tokens)
 
         # Mask prompt tokens for this example
         labels[i, :caption_start] = -100

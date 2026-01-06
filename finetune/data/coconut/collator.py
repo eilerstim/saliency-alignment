@@ -5,9 +5,10 @@ from finetune.data.coconut.tokenization import (
     parse_annotated_caption,
     tokenize_with_annotations,
 )
+from finetune.data.utils import find_sequence
 
 
-def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
+def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     """Collate function for training with annotation-aware tokenization.
 
     This function processes a batch of examples from the COCONut dataset, creating
@@ -42,19 +43,21 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     masks = []
     segments_infos = []
 
-    # User-only messages template (for finding caption start)
+    # Get the assistant header tokens by comparing with/without generation prompt
     user_messages = [
         {
             "role": "user",
-            "content": [
-                {"type": "image"},
-                {"type": "text", "text": "Describe the image in detail."},
-            ],
+            "content": [{"type": "text", "text": "X"}],
         },
     ]
-    prompt_only = processor.apply_chat_template(
+    without_gen = processor.apply_chat_template(
+        user_messages, tokenize=False, add_generation_prompt=False
+    )
+    with_gen = processor.apply_chat_template(
         user_messages, tokenize=False, add_generation_prompt=True
     )
+    assistant_header = with_gen[len(without_gen):]
+    suffix_tokens = processor.tokenizer.encode(assistant_header, add_special_tokens=False)
 
     for example in examples:
         image = example["image"]
@@ -118,15 +121,9 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     ]
 
     for i, caption in enumerate(captions_annotated):
-        # Process prompt-only WITH this example's image to find where caption starts
-        # (image placeholder expands to variable tokens depending on image size)
-        prompt_only_batch = processor(
-            text=[prompt_only],
-            images=[images[i]],
-            padding=False,
-            return_tensors="pt",
-        )
-        caption_start = prompt_only_batch["input_ids"].shape[1]
+        # Find caption start by searching for suffix tokens in input_ids
+        # (more efficient than processing prompt with each image)
+        caption_start = find_sequence(input_ids[i], suffix_tokens) + len(suffix_tokens)
 
         # Mask prompt tokens for this example
         labels[i, :caption_start] = -100
