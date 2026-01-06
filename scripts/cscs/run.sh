@@ -15,7 +15,7 @@
 source ./scripts/cscs/env.sh
 
 
-export CRITERION=default
+export CRITERION=alignment
 export LAMBDA=0.5
 export MODEL=llava-1.5-7b
 

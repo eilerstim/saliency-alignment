@@ -6,7 +6,7 @@ from transformers import ProcessorMixin
 from finetune.data.png.tokenization import build_clean_caption, tokenize_png_caption
 
 
-def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
+def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     """Collate function for training with PNG-COCO segment ID tracking.
 
     This function processes a batch of examples from the PNG-COCO dataset, creating
@@ -36,7 +36,6 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     texts = []
     all_segments = []
     panoptic_masks = []
-    prompt_lengths = []  # Track prompt length for each example
 
     # User-only messages template (for finding caption start)
     user_messages = [
@@ -160,7 +159,7 @@ def train_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         "input_ids": input_ids,
         "labels": labels,
         "segment_ids": segment_ids_tensor,
-        "panoptic_masks": panoptic_masks,
+        "masks": panoptic_masks,
     }
 
 
@@ -234,5 +233,5 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         "labels": labels,
         "answers": answers,
         "segments": all_segments,
-        "panoptic_masks": panoptic_masks,
+        "masks": panoptic_masks,
     }

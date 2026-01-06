@@ -7,6 +7,8 @@ import torch
 from transformers import AttentionInterface, PreTrainedModel
 from transformers.integrations.sdpa_attention import sdpa_attention_forward
 
+from .transformer_utils import _get_image_token_id
+
 
 def trace_model(model: PreTrainedModel, patch_shape: tuple[int, int]):
     """
@@ -22,35 +24,44 @@ def trace_model(model: PreTrainedModel, patch_shape: tuple[int, int]):
         model.config.text_config.hidden_size
         // model.config.text_config.num_attention_heads
     )
-    model._img_starts = None
-    model._img_ends = None
-    model._gen_starts = None
+    model._image_token_id = _get_image_token_id(model.config)
 
     partial_spda_saliency = partial(
         spda_saliency,
         model=model,
     )
-    AttentionInterface.register("sdpa_saliency", partial_spda_saliency)
-    model.set_attn_implementation({"text_config": "sdpa_saliency"})
+
+    # Register a unique attention implementation to avoid conflicts
+    unique_name = f"sdpa_saliency_{id(model)}"
+    AttentionInterface.register(unique_name, partial_spda_saliency)
+    model.set_attn_implementation({"text_config": unique_name})
 
     model.forward_original = model.forward
 
     @wraps(model.forward_original)
-    def wrapped_forward(
-        self,
-        *args,
-        img_starts: torch.Tensor | None = None,
-        img_ends: torch.Tensor | None = None,
-        gen_starts: torch.Tensor | None = None,
-        **kwargs,
-    ):
+    def wrapped_forward(self, *args, **kwargs):
         accum.reset()
-        if img_starts is not None:
-            self._img_starts = img_starts
-        if img_ends is not None:
-            self._img_ends = img_ends
-        if gen_starts is not None:
-            self._gen_starts = gen_starts
+
+        input_ids = kwargs.get("input_ids")
+        labels = kwargs.get("labels", None)
+
+        self._img_tokens = input_ids == self._image_token_id
+
+        if labels is not None:
+            self._gen_tokens = labels != -100
+        else:
+            # indices [0, 1, ..., L-1]
+            idx = torch.arange(input_ids.shape[1], device=input_ids.device)
+
+            # set non-image positions to -1, then take max
+            last_img_idx = torch.where(self._img_tokens, idx, -1).amax(dim=1)
+
+            self._gen_tokens = torch.zeros_like(input_ids, dtype=torch.bool)
+            self._gen_tokens = idx.unsqueeze(0) > last_img_idx.unsqueeze(1)
+
+            # handle batches with no image tokens
+            self._gen_tokens[last_img_idx == -1] = False
+
         return self.forward_original(*args, **kwargs)
 
     # bind the method back to the model
@@ -131,13 +142,12 @@ class SaliencyAccumulator:
         self.maps = None
 
 
-@torch.compile(mode="reduce-overhead")
+# @torch.compile(mode="reduce-overhead")
 def _saliency_from_attentions(
     q: torch.Tensor,
     k: torch.Tensor,
-    img_start: torch.Tensor,
-    img_end: torch.Tensor,
-    gen_start: torch.Tensor,
+    img_tokens: torch.Tensor,
+    gen_tokens: torch.Tensor,
     scale: float,
 ):
     Hq = q.shape[0]
@@ -149,8 +159,8 @@ def _saliency_from_attentions(
         rep = Hq // Hkv
         k = k.repeat_interleave(rep, dim=0)  # [Hq, S, D]
 
-    q_txt = q[:, gen_start:, :]  # [Hq, T_text, D]
-    k_img = k[:, img_start:img_end, :]  # [Hq, S_img, D]
+    q_txt = q[:, gen_tokens, :]  # [Hq, T_text, D]
+    k_img = k[:, img_tokens, :]  # [Hq, S_img, D]
     scores = (q_txt @ k_img.transpose(-2, -1)) * scale  # [Hq, T_text, S_img]
     return scores.mean(0)  # [T_text, S_img]
 
@@ -171,7 +181,7 @@ def spda_saliency(
 
     q,k,v expected: [B, H, S, D]
     """
-    if model._img_starts is None or model._gen_starts is None:
+    if model._accum is None:
         return sdpa_attention_forward(
             module,
             query,
@@ -185,11 +195,10 @@ def spda_saliency(
         _saliency_from_attentions(
             query[i],
             key[i],
-            model._img_starts[i],
-            model._img_ends[i],
-            model._gen_starts[i],
+            model._img_tokens[i],
+            model._gen_tokens[i],
             model._scale,
-        )
+        ).clone()
         for i in range(query.size(0))
     ]
 

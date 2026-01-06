@@ -27,17 +27,19 @@ class SaliencyAlignment(Criterion):
         **kwargs: Any,
     ) -> float:
         # Compute saliency alignment loss
-        scores = []
+        scores: list[torch.Tensor] = []
         for b in range(preds.shape[0]):
             mask = masks[b]  # (H, W)
-            seg_id = segment_ids[b]  # (seq_len, max_segments)
             attn = attentions[b]  # (gen_len, patch_H, patch_W)
+
+            gen_ids = labels[b] != -100
+            seg_ids = segment_ids[b][gen_ids, :]  # (gen_len, max_segments)
 
             # Normalize per generated token
             attn = attn / (attn.sum(dim=(1, 2), keepdim=True) + 1e-8)
 
-            # Upsample trace to match annotation size (gen_len, H, W)
-            trace = F.interpolate(
+            # Upsample attn to match annotation size (gen_len, H, W)
+            attn = F.interpolate(
                 attn.unsqueeze(1),
                 size=mask.shape,
                 mode="bilinear",
@@ -45,23 +47,21 @@ class SaliencyAlignment(Criterion):
             ).squeeze(1)
 
             seg_mask = (
-                mask[None, None] == seg_id[:, :, None, None]
+                mask[None, None] == seg_ids[:, :, None, None]
             )  # (gen_len, max_segments, H, W)
 
             # merge annotations per token -> (gen_len, H, W)
             token_mask = seg_mask.any(dim=1)
+
+            pixel_counts = token_mask.sum(dim=(1, 2))
             valid = token_mask.sum(dim=(1, 2)) > 0  # (gen_len,)
 
-            if not valid.any():
-                continue
+            diff = (attn - 1.0) ** 2
+            loss_per_token = (diff * token_mask).sum(dim=(1, 2)) / pixel_counts.clamp(
+                min=1
+            )
 
-            # Compute loss for each token with annotations
-            loss = F.mse_loss(
-                trace[valid], token_mask[valid].float(), reduction="none"
-            )  # (num_valid, H, W)
-
-            loss = loss.mean(dim=(1, 2))  # (num_valid,)
-            scores.append(loss)
+            scores.append(loss_per_token[valid].flatten())
 
         if len(scores) == 0:
             return torch.tensor(0.0, device=preds.device)

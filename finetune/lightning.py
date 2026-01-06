@@ -1,5 +1,4 @@
 import lightning as L
-import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
@@ -36,22 +35,18 @@ class FineTuner(L.LightningModule):
         return self.model(**batch)
 
     def training_step(self, batch: dict, batch_idx: int):
-        img_starts = batch.pop("img_starts")
-        gen_starts = batch.pop("gen_starts")
-
         # Forward pass with saliency accumulation
-        outputs = self.model(
-            img_starts=img_starts, gen_starts=gen_starts, **batch, return_dict=True
-        )
+        outputs = self.model(**batch, return_dict=True)
         loss = outputs.loss
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             input_ids=batch["input_ids"],
+            segment_ids=batch["segment_ids"],
             preds=outputs.logits,
             attentions=get_maps(self.model),
-            masks=batch.get("masks"),
+            masks=batch["masks"],
         )
 
         # Log relevant metrics
@@ -67,22 +62,18 @@ class FineTuner(L.LightningModule):
         return loss + auxiliary_loss
 
     def validation_step(self, batch: dict, batch_idx: int):
-        img_starts = batch.pop("img_starts")
-        gen_starts = batch.pop("gen_starts")
-
         # Forward pass with saliency accumulation
-        outputs = self.model(
-            img_starts=img_starts, gen_starts=gen_starts, **batch, return_dict=True
-        )
+        outputs = self.model(**batch, return_dict=True)
         loss = outputs.loss
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             input_ids=batch["input_ids"],
+            segment_ids=batch["segment_ids"],
             preds=outputs.logits,
             attentions=get_maps(self.model),
-            masks=batch.get("masks"),
+            masks=batch["masks"],
         )
 
         # Optionally ignore padding (-100) when computing accuracy
@@ -143,45 +134,46 @@ class FineTuner(L.LightningModule):
     def _collate_fn(self, collator_cfg: DictConfig) -> dict:
         """Wrapper around the collate function to bind the processor."""
         collate_fn = instantiate(collator_cfg, processor=self.processor, _partial_=True)
+        return collate_fn
 
-        def wrapper(batch: dict) -> dict:
-            batch = collate_fn(batch)
+        # def wrapper(batch: dict) -> dict:
+        #     batch = collate_fn(batch)
 
-            input_ids = batch["input_ids"]
-            B, S = input_ids.size()
+        #     input_ids = batch["input_ids"]
+        #     B, S = input_ids.size()
 
-            batch_idx, seq_idx = (input_ids == self.image_token_id).nonzero(
-                as_tuple=True
-            )
+        #     batch_idx, seq_idx = (input_ids == self.image_token_id).nonzero(
+        #         as_tuple=True
+        #     )
 
-            img_starts = torch.full((B,), S, dtype=torch.long, device=input_ids.device)
-            img_ends = torch.zeros((B,), dtype=torch.long, device=input_ids.device)
+        #     img_starts = torch.full((B,), S, dtype=torch.long, device=input_ids.device)
+        #     img_ends = torch.zeros((B,), dtype=torch.long, device=input_ids.device)
 
-            img_starts.scatter_reduce_(0, batch_idx, seq_idx, reduce="amin")
-            img_ends.scatter_reduce_(0, batch_idx, seq_idx + 1, reduce="amax")
+        #     img_starts.scatter_reduce_(0, batch_idx, seq_idx, reduce="amin")
+        #     img_ends.scatter_reduce_(0, batch_idx, seq_idx + 1, reduce="amax")
 
-            if (img_starts == S).any():
-                raise RuntimeError("Sample without image tokens")
+        #     if (img_starts == S).any():
+        #         raise RuntimeError("Sample without image tokens")
 
-            segment_ids = batch["segment_ids"]
-            B, S, _ = segment_ids.shape
+        #     segment_ids = batch["segment_ids"]
+        #     B, S, _ = segment_ids.shape
 
-            # positions where all segments are valid
-            batch_idx, seq_idx = (segment_ids != -1).any(dim=-1).nonzero(as_tuple=True)
+        #     # positions where all segments are valid
+        #     batch_idx, seq_idx = (segment_ids != -1).any(dim=-1).nonzero(as_tuple=True)
 
-            gen_starts = torch.full((B,), S, dtype=torch.long, device=input_ids.device)
-            gen_starts.scatter_reduce_(0, batch_idx, seq_idx, reduce="amin")
+        #     gen_starts = torch.full((B,), S, dtype=torch.long, device=input_ids.device)
+        #     gen_starts.scatter_reduce_(0, batch_idx, seq_idx, reduce="amin")
 
-            if (gen_starts == S).any():
-                raise RuntimeError("Sample without generation tokens")
+        #     if (gen_starts == S).any():
+        #         raise RuntimeError("Sample without generation tokens")
 
-            if (img_starts >= gen_starts).any():
-                raise RuntimeError("Malformed image spans in input_ids.")
+        #     if (img_starts >= gen_starts).any():
+        #         raise RuntimeError("Malformed image spans in input_ids.")
 
-            batch["img_starts"] = img_starts
-            batch["img_ends"] = img_ends
-            batch["gen_starts"] = gen_starts
+        #     batch["img_starts"] = img_starts
+        #     batch["img_ends"] = img_ends
+        #     batch["gen_starts"] = gen_starts
 
-            return batch
+        #     return batch
 
-        return wrapper
+        # return wrapper

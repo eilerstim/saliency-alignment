@@ -34,11 +34,11 @@ dataset:
 
 # Collator configuration
 collator:
-  _target_: finetune.data.png.collator.train_collate_fn
+  _target_: finetune.data.png.collator.collate_fn
   # processor will be passed at runtime via partial
 
 eval_collator:
-  _target_: finetune.data.png.collator.eval_collate_fn
+  _target_: finetune.data.png.collator.collate_fn
   # processor will be passed at runtime via partial
 
 # PNG-COCO specific paths
