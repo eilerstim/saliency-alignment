@@ -7,14 +7,16 @@ ENV PROJECT_DIR="${PROJECT_DIR}"
 # Set working directory
 WORKDIR ${PROJECT_DIR}
 
-# Clone lmms-eval at specific commit
+# Install git
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Pin commit
+ARG LMMS_EVAL_COMMIT=69e52879479f273833fe439b58c7e002d27a93aa
+
 RUN git clone https://github.com/EvolvingLMMs-Lab/lmms-eval.git \
     && cd lmms-eval \
-    && git fetch --depth 1 origin 69e52879479f273833fe439b58c7e002d27a93aa \
-    && git checkout 69e52879479f273833fe439b58c7e002d27a93aa
-
-# Install lmms-eval
-RUN pip install ./lmms-eval
+    && git checkout ${LMMS_EVAL_COMMIT} \
+    && pip install .
 
 # Caches inside mounted directory
 ENV HF_HOME="${PROJECT_DIR}/.hf"
