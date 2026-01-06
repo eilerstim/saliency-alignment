@@ -11,12 +11,15 @@
 #SBATCH --mem=320G
 #SBATCH --environment=saliency
 #SBATCH -C thp_never&nvidia_vboost_enabled
+#SBATCH --array=0-2
 
 source ./scripts/cscs/env.sh
 
+lambda_values=(0.3 0.0 2.0)
+export LAMBDA=${lambda_values[$SLURM_ARRAY_TASK_ID]}
+
 
 export CRITERION=alignment
-export LAMBDA=0.5
 export MODEL=llava-1.5-7b
 
 export TOKENIZERS_PARALLELISM=false  # Disable tokenizer parallelism to avoid deadlocks
