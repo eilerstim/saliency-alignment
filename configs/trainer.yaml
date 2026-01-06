@@ -3,7 +3,14 @@ max_epochs: 10
 deterministic: true
 accelerator: auto
 gradient_clip_val: null
-enable_model_summary: false
+enable_model_summary: true
 
+enable_progress_bar: true
+log_every_n_steps: 10
 precision: bf16-mixed
-accumulate_grad_batches: 4
+
+accumulate_grad_batches: 8  # Effective batch size: 128
+max_steps: 200
+
+val_check_interval: 100 # Validate every 100 training steps
+limit_val_batches: 0.1  # Use 10% of validation set

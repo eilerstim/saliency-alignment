@@ -1,0 +1,16 @@
+_target_: torch.optim.lr_scheduler.SequentialLR
+optimizer: null   # will be supplied by instantiate()
+
+schedulers:
+  - _target_: torch.optim.lr_scheduler.LinearLR
+    start_factor: 0.17 # MIN_LR / PEAK_LR
+    end_factor: 1.0
+    total_iters: 20 # 10% of max_steps
+    optimizer: ${...optimizer}
+
+  - _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    T_max: 180 # Total steps - warmup steps
+    eta_min: 1e-5
+    optimizer: ${...optimizer}
+
+milestones: [20] # 10% of max_steps
