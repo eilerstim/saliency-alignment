@@ -96,4 +96,7 @@ def finetune(cfg: DictConfig):
 
     if rank == 0:
         # Save the final checkpoint
-        model.save_pretrained(f"{hydra_wd}/weights")
+        save_dir = f"{hydra_wd}/checkpoints"
+        model.save_pretrained(save_dir)
+        logger.info(f"Model weights saved to {save_dir}")
+
