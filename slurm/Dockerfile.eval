@@ -18,17 +18,15 @@ RUN apt-get update && apt-get install -y \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Remove packages that break on system
-RUN echo "decord" > exclude.txt
-
 # Pin commit
 ARG LMMS_EVAL_COMMIT=69e52879479f273833fe439b58c7e002d27a93aa
 
 # Download LMM Eval
 RUN git clone https://github.com/EvolvingLMMs-Lab/lmms-eval.git \
     && cd lmms-eval \
+    && echo "decord" > exclude.txt \
     && git checkout ${LMMS_EVAL_COMMIT} \
-    && uv pip install . --exclude "exclude.txt" --system
+    && uv pip install . --exclude exclude.txt --system
 
 # Caches inside mounted directory
 ENV HF_HOME="${PROJECT_DIR}/.hf"
