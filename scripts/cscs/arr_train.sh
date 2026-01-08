@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=a163
-#SBATCH --job-name=finetune
+#SBATCH --job-name=saliency-finetune
 #SBATCH --output=logs/%x_%A_%a.out
 #SBATCH --error=logs/%x_%A_%a.err
 #SBATCH --time=12:00:00
@@ -9,7 +9,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=320G
-#SBATCH --environment=finetune
+#SBATCH --environment=saliency
 #SBATCH -C thp_never&nvidia_vboost_enabled
 
 set -euo pipefail

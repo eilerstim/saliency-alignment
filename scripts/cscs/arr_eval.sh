@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=a163
-#SBATCH --job-name=eval
+#SBATCH --job-name=saliency-eval
 #SBATCH --output=logs/%x_%A_%a.out
 #SBATCH --error=logs/%x_%A_%a.err
 #SBATCH --time=12:00:00
