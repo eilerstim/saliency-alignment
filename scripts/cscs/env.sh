@@ -2,6 +2,8 @@
 # This script sets up the virtual environment
 # Designed for use on the CSCS Alps clariden cluster, in the saliency environment.
 
+export RESET_ENV=${RESET_ENV:-0}
+
 # If reset_env is set, delete existing virtual environment
 if [ "$RESET_ENV" == "1" ]; then
     rm -rf "$PROJECT_DIR/.venv"
