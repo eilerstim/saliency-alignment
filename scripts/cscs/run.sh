@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --account=large-sc-2
+#SBATCH --account=a163
 #SBATCH --job-name=saliency
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-#SBATCH --time=02:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gpus-per-node=4
@@ -15,7 +15,7 @@
 
 source ./scripts/cscs/env.sh
 
-lambda_values=(0.3 0.0 2.0)
+lambda_values=(0.1 0.5 1.0)
 export LAMBDA=${lambda_values[$SLURM_ARRAY_TASK_ID]}
 
 
