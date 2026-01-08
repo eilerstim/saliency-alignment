@@ -1,0 +1,10 @@
+image = "/users/<YOUR_USERNAME>/scratch/saliency-alignment/slurm/eval.sqsh"
+mounts = [
+    "/capstor",
+    "/iopsstor",
+    "/users",
+]
+
+[annotations]
+com.hooks.aws_ofi_nccl.enabled = "true"
+com.hooks.aws_ofi_nccl.variant = "cuda12"
