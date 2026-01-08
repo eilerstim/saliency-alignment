@@ -17,6 +17,10 @@ wheels/
 # Hydra outputs
 outputs/
 
+# Checkpoints
+checkpoints/
+models/
+
 # OS Files
 .DS_Store
 
