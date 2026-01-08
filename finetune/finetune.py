@@ -95,6 +95,6 @@ def finetune(cfg: DictConfig):
     trainer.fit(fine_tuner)
 
     # Save the final checkpoint
-    save_dir = f"{hydra_wd}/checkpoints"
+    save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
     model.save_pretrained(save_dir)
     logger.info(f"Model weights saved to {save_dir}")
