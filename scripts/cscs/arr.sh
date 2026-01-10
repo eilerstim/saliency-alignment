@@ -23,7 +23,8 @@ LAMBDAS=(0.01 0.1 0.3 0.5 1.0 2.0)
 
 # ---- BASELINE: eval only ----
 if [ ${SLURM_ARRAY_TASK_ID} -eq 6 ]; then
-    sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}"
+    sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}" "true"
+    echo "Submitted EVAL only for baseline model ${BASE_MODEL} at $(date)"
     exit 0
 fi
 
@@ -42,7 +43,7 @@ echo "Submitting jobs for ${RUN_ID} at $(date)"
 
 # ---- Check if only evaluation is requested ----
 if [ "${EVAL_ONLY}" = "true" ]; then
-    sbatch scripts/cscs/arr_eval.sh "models/${RUN_ID}"
+    sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
     echo "Submitted EVAL only for ${RUN_ID}"
     exit 0
 fi
@@ -55,6 +56,6 @@ TRAIN_JOBID=$(sbatch --parsable \
 # ---- Submit evaluation job dependent on training ----
 sbatch \
     --dependency=afterok:${TRAIN_JOBID} \
-    scripts/cscs/arr_eval.sh "models/${RUN_ID}"
+    scripts/cscs/arr_eval.sh "$RUN_ID"
 
 echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"

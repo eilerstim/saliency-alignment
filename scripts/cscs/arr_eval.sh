@@ -16,8 +16,15 @@
 set -euo pipefail
 mkdir -p logs
 
-MODEL_PATH="$1"
-MODEL_NAME="$(basename "${MODEL_PATH}")"
+MODEL_NAME="$1"
+
+# if second arg is set to true, it's a hf model name
+# Otherwise, it's a path under models/
+if [ "${2:-false}" = "true" ]; then
+    MODEL_PATH="${MODEL_NAME}"
+else
+    MODEL_PATH="models/${MODEL_NAME}"
+fi
 
 echo "Starting LM-eval of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
