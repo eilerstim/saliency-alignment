@@ -26,6 +26,8 @@ else
     MODEL_PATH="${PROJECT_DIR}/models/${MODEL_NAME}"
 fi
 
+source ./scripts/cscs/count/env.sh
+
 echo "Starting Count evaluation of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
