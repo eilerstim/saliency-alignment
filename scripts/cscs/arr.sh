@@ -13,6 +13,9 @@
 set -euo pipefail
 mkdir -p logs
 
+# If EVAL_ONLY is set to true, only run evaluation on trained models
+export EVAL_ONLY=${EVAL_ONLY:-false}
+
 MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
@@ -36,6 +39,13 @@ fi
 RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}"
 
 echo "Submitting jobs for ${RUN_ID} at $(date)"
+
+# ---- Check if only evaluation is requested ----
+if [ "${EVAL_ONLY}" = "true" ]; then
+    sbatch scripts/cscs/arr_eval.sh "models/${RUN_ID}"
+    echo "Submitted EVAL only for ${RUN_ID}"
+    exit 0
+fi
 
 # ---- Submit training job ----
 TRAIN_JOBID=$(sbatch --parsable \
