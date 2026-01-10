@@ -22,7 +22,7 @@ BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 LAMBDAS=(0.01 0.1 0.3 0.5 1.0 2.0)
 
 # ---- BASELINE: eval only ----
-if [ ${SLURM_ARRAY_TASK_ID} -eq 6 ]; then
+if [ ${SLURM_ARRAY_TASK_ID} -eq 7 ]; then
     sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}" "true"
     echo "Submitted EVAL only for baseline model ${BASE_MODEL} at $(date)"
     exit 0
