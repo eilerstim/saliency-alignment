@@ -30,7 +30,8 @@ echo "Starting Count evaluation of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
 $COUNT_DIR/.count_venv/bin/python -m vlm-counting \
-    +mode.engine huggingface \
+    +root_dir $COUNT_DIR \
+    +model.engine huggingface \
     +model.name $MODEL_PATH
 
 echo "Finished LM-eval evaluation at $(date)"
