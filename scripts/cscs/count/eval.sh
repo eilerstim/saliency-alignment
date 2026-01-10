@@ -9,7 +9,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=320G
-#SBATCH --environment=saliency-finetune
+#SBATCH --environment=saliency
 #SBATCH --no-requeue
 #SBATCH -C thp_never&nvidia_vboost_enabled
 
