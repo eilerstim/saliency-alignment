@@ -29,7 +29,7 @@ fi
 echo "Starting LM-eval of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
-MODEL_ARGS="model=${MODEL_PATH},tokenizer=llava-hf/llava-1.5-7b-hf,tensor_parallel_size=4,dtype=bfloat16,trust_remote_code=True,max_model_len=32768"
+MODEL_ARGS="model=${MODEL_PATH},tokenizer=llava-hf/llava-1.5-7b-hf,tensor_parallel_size=4,dtype=bfloat16,trust_remote_code=True,max_model_len=4096"
 # WANDB_ARGS="project=alignment-eval,entity=teilers-eth-z-rich,name=${MODEL_NAME},dir=${PROJECT_DIR}/outputs/lmms_eval/"
 
 python3 -m lmms_eval \
