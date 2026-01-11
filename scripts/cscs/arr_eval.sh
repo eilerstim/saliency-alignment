@@ -26,8 +26,6 @@ else
     MODEL_PATH="models/${MODEL_NAME}"
 fi
 
-pip install decord2  # TODO: Add to dockerfile.eval
-
 echo "Starting LM-eval of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
