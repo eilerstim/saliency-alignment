@@ -26,10 +26,12 @@ else
     MODEL_PATH="${PROJECT_DIR}/models/${MODEL_NAME}"
 fi
 
+source ./scripts/cscs/count/env.sh
+
 echo "Starting Count evaluation of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
-$COUNT_DIR/.count_venv/bin/python -m vlm-counting \
+$COUNT_DIR/.count_venv/bin/python -m evaluator \
     +root_dir $COUNT_DIR \
     +model.engine huggingface \
     +model.name $MODEL_PATH
