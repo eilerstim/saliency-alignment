@@ -9,7 +9,7 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=320G
-#SBATCH --environment=saliency
+#SBATCH --environment=saliency_eval
 #SBATCH --no-requeue
 #SBATCH -C thp_never&nvidia_vboost_enabled
 
@@ -33,7 +33,8 @@ echo "MODEL_PATH=${MODEL_PATH}"
 
 $COUNT_DIR/.count_venv/bin/python -m evaluator \
     +root_dir $COUNT_DIR \
-    +model.engine huggingface \
-    +model.name $MODEL_PATH
+    +model.engine vllm_generate \
+    +model.name $MODEL_PATH \
+    +model.vllm_params "{tensor_parallel_size:4,dtype:bfloat16,trust_remote_code:True}"
 
 echo "Finished LM-eval evaluation at $(date)"
