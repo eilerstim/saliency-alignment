@@ -42,6 +42,7 @@ $COUNT_DIR/.count_venv/bin/python -m evaluator \
     ++model.model=$MODEL_PATH \
     ++model.vllm_params.tensor_parallel_size=4 \
     ++model.vllm_params.dtype=bfloat16 \
-    ++model.vllm_params.trust_remote_code=true
+    ++model.vllm_params.trust_remote_code=true \
+    ++model.vllm_params.tokenizer=llava-hf/llava-1.5-7b-hf \
 
 echo "Finished LM-eval evaluation at $(date)"
