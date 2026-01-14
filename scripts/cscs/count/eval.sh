@@ -31,10 +31,18 @@ source ./scripts/cscs/count/env.sh
 echo "Starting Count evaluation of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
+# Extract model name for output directory
+MODEL_DIR_NAME=$(basename "$MODEL_PATH" | sed 's/\//-/g')
+OUTPUT_DIR="$COUNT_DIR/results/${MODEL_DIR_NAME}"
+
 $COUNT_DIR/.count_venv/bin/python -m evaluator \
-    +root_dir $COUNT_DIR \
-    +model.engine vllm_generate \
-    +model.name $MODEL_PATH \
-    +model.vllm_params "{tensor_parallel_size:4,dtype:bfloat16,trust_remote_code:True}"
+    ++root_dir=$COUNT_DIR \
+    ++output_dir=$OUTPUT_DIR \
+    ++model.engine=vllm_generate \
+    ++model.model=$MODEL_PATH \
+    ++model.vllm_params.tensor_parallel_size=4 \
+    ++model.vllm_params.dtype=bfloat16 \
+    ++model.vllm_params.trust_remote_code=true \
+    ++model.vllm_params.tokenizer=llava-hf/llava-1.5-7b-hf \
 
 echo "Finished LM-eval evaluation at $(date)"
