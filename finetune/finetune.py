@@ -96,5 +96,7 @@ def finetune(cfg: DictConfig):
 
     # Save the final checkpoint
     save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
-    model.save_pretrained(save_dir)
+    model.save_pretrained(save_dir, is_main_process=(rank == 0))
+    if rank == 0:
+        processor.save_pretrained(save_dir)
     logger.info(f"Model weights saved to {save_dir}")
