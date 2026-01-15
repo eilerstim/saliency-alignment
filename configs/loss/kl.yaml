@@ -1,0 +1,2 @@
+_target_: finetune.criterion.kl.SaliencyAlignment
+weight: 0.5  # Defined for all criterion classes, default is 1.0
