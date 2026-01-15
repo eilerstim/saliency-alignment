@@ -7,8 +7,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-7
-# Array: 0-7: combinations of 6 lambdas + default + eval only (baseline)
+#SBATCH --array=0-5%4
+# Array: 0-3 = criterion x lambdas; 4 = default (no regularization); 5 = baseline eval only
 
 set -euo pipefail
 mkdir -p logs
@@ -19,22 +19,27 @@ export EVAL_ONLY=${EVAL_ONLY:-false}
 MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
-LAMBDAS=(0.01 0.1 0.3 0.5 1.0 2.0)
+CRITERION="kl"
+LAMBDAS=(0.001 0.01 0.1 1.0)
+
+NUM_LAMBDAS=${#LAMBDAS[@]}
+DEFAULT_ID=${NUM_LAMBDAS}
+BASELINE_ID=$((NUM_LAMBDAS + 1))
 
 # ---- BASELINE: eval only ----
-if [ ${SLURM_ARRAY_TASK_ID} -eq 7 ]; then
+if [ "${SLURM_ARRAY_TASK_ID}" -eq "${BASELINE_ID}" ]; then
     sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}" "true"
     echo "Submitted EVAL only for baseline model ${BASE_MODEL} at $(date)"
     exit 0
 fi
 
-# ---- Resolve criterion / lambda ----
-if [ ${SLURM_ARRAY_TASK_ID} -eq 6 ]; then
+# ---- Resolve lambda (or default) ----
+if [ "${SLURM_ARRAY_TASK_ID}" -eq "${DEFAULT_ID}" ]; then
     CRITERION="default"
     LAMBDA=0.0
 else
-    CRITERION="alignment"
-    LAMBDA=${LAMBDAS[${SLURM_ARRAY_TASK_ID}]}
+    LAMBDA_INDEX=${SLURM_ARRAY_TASK_ID}   # 0..NUM_LAMBDAS-1
+    LAMBDA=${LAMBDAS[$LAMBDA_INDEX]}
 fi
 
 RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}"
@@ -54,8 +59,7 @@ TRAIN_JOBID=$(sbatch --parsable \
     "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE")
 
 # ---- Submit evaluation job dependent on training ----
-sbatch \
-    --dependency=afterok:${TRAIN_JOBID} \
+sbatch --dependency=afterok:${TRAIN_JOBID} \
     scripts/cscs/arr_eval.sh "$RUN_ID"
 
 echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"
