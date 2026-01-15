@@ -102,11 +102,18 @@ def finetune(cfg: DictConfig):
     # Gather and save model state dict on rank 0
     save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
     with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
-        cpu_state = trainer.strategy.model.state_dict()
+        lt_state = trainer.strategy.model.state_dict()
+
+    # strip the Lightning prefix
+    hf_state = {
+        k.removeprefix("model."): v
+        for k, v in lt_state.items()
+        if k.startswith("model.")
+    }
 
     # Save model and processor
     if rank == 0:
         save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
-        model.save_pretrained(save_dir, state_dict=cpu_state)
+        model.save_pretrained(save_dir, state_dict=hf_state)
         processor.save_pretrained(save_dir)
         logger.info(f"Model weights saved to {save_dir}")
