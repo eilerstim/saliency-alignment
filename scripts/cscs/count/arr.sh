@@ -30,7 +30,7 @@ if [ ${SLURM_ARRAY_TASK_ID} -eq 6 ]; then
     CRITERION="default"
     LAMBDA=0.0
 else
-    CRITERION="alignment"
+    CRITERION="kl"
     LAMBDA=${LAMBDAS[${SLURM_ARRAY_TASK_ID}]}
 fi
 

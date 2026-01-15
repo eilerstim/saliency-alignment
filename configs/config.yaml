@@ -2,7 +2,7 @@ defaults:
   - model: llava-1.5-7b
   - optim: adamw
   - data: png
-  - loss: alignment
+  - loss: kl
   - trainer
   - dataloader
   - _self_
