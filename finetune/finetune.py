@@ -10,9 +10,12 @@ from lightning.fabric.plugins.environments import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from lightning.pytorch.strategies import FSDPStrategy
 from omegaconf import DictConfig, OmegaConf
-from torch.distributed.fsdp.fully_sharded_data_parallel import (
+from torch.distributed.fsdp.fully_sharded_data_parallel import (    
+    FullyShardedDataParallel as FSDP,
     MixedPrecision,
+    StateDictType,
     ShardingStrategy,
+    FullStateDictConfig,
 )
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 from transformers import AutoModelForImageTextToText, AutoProcessor
@@ -94,9 +97,16 @@ def finetune(cfg: DictConfig):
     # Fine-tuning
     trainer.fit(fine_tuner)
 
-    # Save the final checkpoint
-    save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
-    model.save_pretrained(save_dir, is_main_process=(rank == 0))
+    # Gather and save model state dict on rank 0
+    save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+    with FSDP.state_dict_type(
+                model, StateDictType.FULL_STATE_DICT, save_policy
+            ):
+                cpu_state = model.state_dict()
+        
+    # Save model and processor
     if rank == 0:
+        save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
+        model.save_pretrained(save_dir, state_dict=cpu_state)
         processor.save_pretrained(save_dir)
-    logger.info(f"Model weights saved to {save_dir}")
+        logger.info(f"Model weights saved to {save_dir}")
