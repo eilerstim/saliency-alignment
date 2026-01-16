@@ -20,7 +20,7 @@ MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
 CRITERION="kl"
-LAMBDAS=(0.001 0.01 0.1 1.0)
+LAMBDAS=(0.0001 0.001 0.01 0.1 1.0)
 
 NUM_LAMBDAS=${#LAMBDAS[@]}
 DEFAULT_ID=${NUM_LAMBDAS}
@@ -29,6 +29,7 @@ BASELINE_ID=$((NUM_LAMBDAS + 1))
 # ---- BASELINE: eval only ----
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "${BASELINE_ID}" ]; then
     sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}" "true"
+    sbatch scripts/cscs/count/eval.sh "${BASE_MODEL}" "true"
     echo "Submitted EVAL only for baseline model ${BASE_MODEL} at $(date)"
     exit 0
 fi
@@ -49,6 +50,7 @@ echo "Submitting jobs for ${RUN_ID} at $(date)"
 # ---- Check if only evaluation is requested ----
 if [ "${EVAL_ONLY}" = "true" ]; then
     sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
+    sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
     echo "Submitted EVAL only for ${RUN_ID}"
     exit 0
 fi
@@ -61,5 +63,8 @@ TRAIN_JOBID=$(sbatch --parsable \
 # ---- Submit evaluation job dependent on training ----
 sbatch --dependency=afterok:${TRAIN_JOBID} \
     scripts/cscs/arr_eval.sh "$RUN_ID"
+
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/count/eval.sh "$RUN_ID" "false"
 
 echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"

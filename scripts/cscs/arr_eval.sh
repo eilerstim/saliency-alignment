@@ -37,7 +37,7 @@ python3 -m lmms_eval \
     --model_args "${MODEL_ARGS}" \
     --output_path "${PROJECT_DIR}/results/lm-eval/${MODEL_NAME}" \
     --include_path $PROJECT_DIR/eval/lmms_eval/tasks \
-    --tasks mmbench,mmerealworld,gqa,pope,mmvetv2
+    --tasks gqa,pope #,mmvetv2,mmbench,mmerealworld,
     # --wandb_args "${WANDB_ARGS}" \
 
 echo "Finished LM-eval evaluation at $(date)"
