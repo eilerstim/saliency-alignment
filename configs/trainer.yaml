@@ -9,7 +9,7 @@ enable_progress_bar: true
 log_every_n_steps: 10
 precision: bf16-mixed
 
-accumulate_grad_batches: 8  # Effective batch size: 128
+accumulate_grad_batches: 4  # Effective batch size: 64
 max_steps: 200
 
 val_check_interval: 100 # Validate every 100 training steps
