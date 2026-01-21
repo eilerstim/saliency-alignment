@@ -29,9 +29,6 @@ class SaliencyAlignment(Criterion):
             gen_ids = labels[b] != -100
             seg_ids = segment_ids[b][gen_ids, :]  # (gen_len, max_segments)
 
-            # Normalize attention per token -> probability distribution
-            attn = attn / (attn.sum(dim=(1, 2), keepdim=True) + 1e-8)
-
             # Upsample to annotation resolution
             attn = F.interpolate(
                 attn.unsqueeze(1),
@@ -39,6 +36,9 @@ class SaliencyAlignment(Criterion):
                 mode="bilinear",
                 align_corners=False,
             ).squeeze(1)  # (gen_len, H, W)
+
+            # Normalize attention per token -> probability distribution
+            attn = attn / (attn.sum(dim=(1, 2), keepdim=True) + 1e-8)
 
             # Build target mask
             seg_mask = (

@@ -35,9 +35,6 @@ class SaliencyAlignment(Criterion):
             gen_ids = labels[b] != -100
             seg_ids = segment_ids[b][gen_ids, :]  # (gen_len, max_segments)
 
-            # Normalize per generated token
-            attn = attn / (attn.sum(dim=(1, 2), keepdim=True) + 1e-8)
-
             # Upsample attn to match annotation size (gen_len, H, W)
             attn = F.interpolate(
                 attn.unsqueeze(1),
@@ -45,6 +42,9 @@ class SaliencyAlignment(Criterion):
                 mode="bilinear",
                 align_corners=False,  # type: ignore
             ).squeeze(1)
+            
+            # Normalize per generated token
+            attn = attn / (attn.sum(dim=(1, 2), keepdim=True) + 1e-8)
 
             seg_mask = (
                 mask[None, None] == seg_ids[:, :, None, None]
