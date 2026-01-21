@@ -44,6 +44,10 @@ def finetune(cfg: DictConfig):
     # Instantiate model and processor
     model = AutoModelForImageTextToText.from_pretrained(cfg.model.name)
     processor = AutoProcessor.from_pretrained(cfg.model.name)
+    
+    # Freeze vision encoder 
+    model.vision_tower.requires_grad_(False)
+    model.multi_modal_projector.requires_grad_(False)    
 
     # Prepare model for training
     model.train()
