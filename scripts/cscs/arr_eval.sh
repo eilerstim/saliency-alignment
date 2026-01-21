@@ -29,6 +29,8 @@ fi
 echo "Starting LM-eval of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
+pip install spacy
+
 MODEL_ARGS="model=${MODEL_PATH},tokenizer=llava-hf/llava-1.5-7b-hf,tensor_parallel_size=4,dtype=bfloat16,trust_remote_code=True"
 # WANDB_ARGS="project=alignment-eval,entity=teilers-eth-z-rich,name=${MODEL_NAME},dir=${PROJECT_DIR}/outputs/lmms_eval/"
 
