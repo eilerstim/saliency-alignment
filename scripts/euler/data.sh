@@ -11,8 +11,9 @@
 
 echo "Beginning downloading data at $(date)"
 
-source scripts/env.sh
+source scripts/euler/env.sh
 
-uv run -m finetune.data.grand.download
+uv run -m finetune.data.download \
+    hydra.run.dir=outputs/${SLURM_JOB_NAME}_${SLURM_JOB_ID}
 
 echo "Finished downloading data at $(date)"
