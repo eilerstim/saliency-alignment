@@ -74,18 +74,26 @@ class FineTuner(L.LightningModule):
             preds=outputs.logits,
             attentions=get_maps(self.model),
             masks=batch["masks"],
-        )
+        )        
 
-        # Optionally ignore padding (-100) when computing accuracy
         preds = outputs.logits.argmax(dim=-1)
         labels = batch["labels"]
-        valid_token_mask = labels != -100
+        
+        # Shift for next-token prediction
+        shift_preds = preds[:, :-1]
+        shift_labels = labels[:, 1:]
+        
+        # Ignore padding (-100)
+        valid_token_mask = shift_labels != -100
+        
         if valid_token_mask.any():
             accuracy = (
-                (preds[valid_token_mask] == labels[valid_token_mask]).float().mean()
+                (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
+                .float()
+                .mean()
             )
         else:
-            accuracy = (preds == labels).float().mean()
+            accuracy = torch.tensor(0.0, device=labels.device)
 
         # Log relevant metrics
         log_dict = {
