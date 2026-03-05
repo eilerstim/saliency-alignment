@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
 from typing import Any
 
-import torch
+from jaxtyping import Float, Int
+from torch import Tensor
+
+from vl_saliency.core.grid import SaliencyGrid
 
 
 class Criterion(ABC):
@@ -22,20 +24,20 @@ class Criterion(ABC):
 
     def __call__(
         self,
-        labels: torch.Tensor,
-        input_ids: torch.Tensor,
-        segment_ids: torch.Tensor,
-        preds: torch.Tensor,
-        attentions: Sequence[torch.Tensor],
-        masks: list[torch.Tensor],
+        labels: Int[Tensor, "B S"],
+        input_ids: Int[Tensor, "B S"],
+        segment_ids: Int[Tensor, "B S"],
+        preds: Float[Tensor, "B T V"],
+        saliency: SaliencyGrid,
+        masks: list[Tensor],
         **kwargs: Any,
-    ) -> float:
+    ) -> Float[Tensor, "1"]:
         loss = self.compute_loss(
             labels=labels,
             input_ids=input_ids,
             segment_ids=segment_ids,
             preds=preds,
-            attentions=attentions,
+            saliency=saliency,
             masks=masks,
             **kwargs,
         )
@@ -44,25 +46,25 @@ class Criterion(ABC):
     @abstractmethod
     def compute_loss(
         self,
-        labels: torch.Tensor,
-        input_ids: torch.Tensor,
-        segment_ids: torch.Tensor,
-        preds: torch.Tensor,
-        attentions: Sequence[torch.Tensor],
-        masks: list[torch.Tensor],
+        labels: Int[Tensor, "B S"],
+        input_ids: Int[Tensor, "B S"],
+        segment_ids: Int[Tensor, "B S"],
+        preds: Float[Tensor, "B T V"],
+        saliency: SaliencyGrid,
+        masks: list[Tensor],
         **kwargs: Any,
-    ) -> float:
+    ) -> Float[Tensor, "1"]:
         """Compute the auxiliary loss.
 
         Args:
             labels (torch.Tensor): Ground truth labels.  [batch_size, seq_len]
             input_ids (torch.Tensor): Input token IDs. [batch_size, seq_len]
             preds (torch.Tensor): The model prediction logits. [batch_size, seq_len, vocab_size]
-            attentions (Sequence[torch.Tensor]): The attention weights from the model. [List of tensors with shape [seq_len, H, W]]
+            saliency (SaliencyGrid): The attention weights from the model.
             masks (list[torch.Tensor]): Binary annotation masks. List of [H, W]. Zero tensors indicate no annotation.
             **kwargs (Any): Additional keyword arguments
 
         Returns:
-            float: Computed auxiliary loss.
+            Tensor: Computed auxiliary loss.
         """
         ...
