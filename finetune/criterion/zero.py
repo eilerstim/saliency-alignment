@@ -1,7 +1,9 @@
-from collections.abc import Sequence
 from typing import Any
 
-import torch
+from jaxtyping import Float, Int
+from torch import Tensor
+
+from vl_saliency.core.grid import SaliencyGrid
 
 from .base import Criterion
 
@@ -11,12 +13,12 @@ class ZeroCriterion(Criterion):
 
     def compute_loss(
         self,
-        labels: torch.Tensor,
-        input_ids: torch.Tensor,
-        segment_ids: torch.Tensor,
-        preds: torch.Tensor,
-        attentions: Sequence[torch.Tensor],
-        masks: list[torch.Tensor],
+        labels: Int[Tensor, "B S"],
+        input_ids: Int[Tensor, "B S"],
+        segment_ids: Int[Tensor, "B S"],
+        preds: Float[Tensor, "B T V"],
+        saliency: SaliencyGrid,
+        masks: list[Tensor],
         **kwargs: Any,
-    ) -> float:
-        return 0.0
+    ) -> Float[Tensor, "1"]:
+        return preds.new_zeros(1)

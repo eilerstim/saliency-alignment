@@ -28,7 +28,7 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         Labels are set to -100 (ignored in loss computation) for:
         - All prompt tokens (BOS, user message, image tokens, assistant header)
         - Padding tokens
-        
+
         Only the caption tokens (assistant's response) have valid labels, ensuring
         the model is trained only to generate the caption, not predict the prompt.
 
@@ -53,7 +53,7 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             - pixel_values (torch.Tensor): Processed image tensor
             - labels (torch.Tensor): Training targets [batch_size, seq_len]
                 -100 for prompt/padding tokens, token IDs for caption tokens
-            - segment_ids (torch.Tensor): Per-token segment IDs 
+            - segment_ids (torch.Tensor): Per-token segment IDs
                 [batch_size, seq_len, max_segments], padded with -1
             - masks (list[torch.Tensor]): Panoptic masks [H, W] containing segment IDs
             - **batch: Additional fields provided by the processor
@@ -76,8 +76,10 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     with_gen = processor.apply_chat_template(
         user_messages, tokenize=False, add_generation_prompt=True
     )
-    assistant_header = with_gen[len(without_gen):]
-    suffix_tokens = processor.tokenizer.encode(assistant_header, add_special_tokens=False)
+    assistant_header = with_gen[len(without_gen) :]
+    suffix_tokens = processor.tokenizer.encode(
+        assistant_header, add_special_tokens=False
+    )
 
     for example in examples:
         image = example["image"]

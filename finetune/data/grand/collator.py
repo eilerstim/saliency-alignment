@@ -53,8 +53,10 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     with_gen = processor.apply_chat_template(
         user_messages, tokenize=False, add_generation_prompt=True
     )
-    assistant_header = with_gen[len(without_gen):]
-    suffix_tokens = processor.tokenizer.encode(assistant_header, add_special_tokens=False)
+    assistant_header = with_gen[len(without_gen) :]
+    suffix_tokens = processor.tokenizer.encode(
+        assistant_header, add_special_tokens=False
+    )
 
     for example in examples:
         image = example["image"]

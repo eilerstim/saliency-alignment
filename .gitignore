@@ -35,3 +35,9 @@ slurm_logs/
 
 # Dump files
 core_nid*
+
+# Lock files
+*.lock
+
+# IDE settings
+.vscode

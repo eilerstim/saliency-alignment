@@ -1,11 +1,11 @@
 import lightning as L
+import torch
 from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
-from .saliency import get_maps, trace_model
-from .transformer_utils import _get_image_token_id, _get_vision_patch_shape
+from .criterion import Criterion
 
 
 class FineTuner(L.LightningModule):
@@ -19,17 +19,8 @@ class FineTuner(L.LightningModule):
         self.model = model
         self.processor = processor
 
-        self.image_token_id = _get_image_token_id(self.model.config)
-        self.patch_shape = _get_vision_patch_shape(self.model.config)
-
-        text_config = self.model.config.text_config
-        self.head_dim = text_config.hidden_size // text_config.num_attention_heads
-
         # Instantiate auxiliary loss function
-        self.auxiliary_loss = instantiate(self.cfg.loss)
-
-        # Trace model for saliency computation
-        trace_model(self.model, self.patch_shape)
+        self.auxiliary_loss: Criterion = instantiate(self.cfg.loss)
 
     def forward(self, **batch):
         return self.model(**batch)
@@ -45,7 +36,7 @@ class FineTuner(L.LightningModule):
             input_ids=batch["input_ids"],
             segment_ids=batch["segment_ids"],
             preds=outputs.logits,
-            attentions=get_maps(self.model),
+            saliency=outputs.saliency,
             masks=batch["masks"],
         )
 
@@ -72,20 +63,28 @@ class FineTuner(L.LightningModule):
             input_ids=batch["input_ids"],
             segment_ids=batch["segment_ids"],
             preds=outputs.logits,
-            attentions=get_maps(self.model),
+            saliency=outputs.saliency,
             masks=batch["masks"],
         )
 
-        # Optionally ignore padding (-100) when computing accuracy
         preds = outputs.logits.argmax(dim=-1)
         labels = batch["labels"]
-        valid_token_mask = labels != -100
+
+        # Shift for next-token prediction
+        shift_preds = preds[:, :-1]
+        shift_labels = labels[:, 1:]
+
+        # Ignore padding (-100)
+        valid_token_mask = shift_labels != -100
+
         if valid_token_mask.any():
             accuracy = (
-                (preds[valid_token_mask] == labels[valid_token_mask]).float().mean()
+                (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
+                .float()
+                .mean()
             )
         else:
-            accuracy = (preds == labels).float().mean()
+            accuracy = torch.tensor(0.0, device=labels.device)
 
         # Log relevant metrics
         log_dict = {
@@ -112,10 +111,11 @@ class FineTuner(L.LightningModule):
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
 
         # Get collator function and bind processor via partial
-        collate_fn = instantiate(self.cfg.data.collator, processor=self.processor, _partial_=True)
+        collate_fn = instantiate(
+            self.cfg.data.collator, processor=self.processor, _partial_=True
+        )
 
         dl_kwargs = getattr(self.cfg, "dataloader", {})
-        dl_kwargs = OmegaConf.to_container(dl_kwargs)
         return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
 
     def val_dataloader(self) -> DataLoader:
@@ -123,10 +123,11 @@ class FineTuner(L.LightningModule):
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
 
         # Get eval collator function and bind processor via partial
-        collate_fn = instantiate(self.cfg.data.eval_collator, processor=self.processor, _partial_=True)
+        collate_fn = instantiate(
+            self.cfg.data.eval_collator, processor=self.processor, _partial_=True
+        )
 
         dl_kwargs = getattr(self.cfg, "dataloader", {})
-        dl_kwargs = OmegaConf.to_container(dl_kwargs)
         dl_kwargs["shuffle"] = False  # No shuffling for validation
 
         return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)

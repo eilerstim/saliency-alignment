@@ -6,11 +6,11 @@ import hydra
 import lightning as L
 import torch
 from hydra.core.hydra_config import HydraConfig
-from lightning.fabric.plugins.environments import SLURMEnvironment
+from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from lightning.pytorch.strategies import FSDPStrategy
 from omegaconf import DictConfig, OmegaConf
-from torch.distributed.fsdp.fully_sharded_data_parallel import (
+from torch.distributed.fsdp.api import (
     FullStateDictConfig,
     MixedPrecision,
     ShardingStrategy,
@@ -21,6 +21,8 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import (
 )
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 from transformers import AutoModelForImageTextToText, AutoProcessor
+
+from vl_saliency import Saliency
 
 from .lightning import FineTuner
 
@@ -44,10 +46,10 @@ def finetune(cfg: DictConfig):
     # Instantiate model and processor
     model = AutoModelForImageTextToText.from_pretrained(cfg.model.name)
     processor = AutoProcessor.from_pretrained(cfg.model.name)
-    
-    # Freeze vision encoder 
-    model.vision_tower.requires_grad_(False)
-    model.multi_modal_projector.requires_grad_(False)    
+
+    # Freeze entire model except language model head
+    model.requires_grad_(False)
+    model.multi_modal_projector.requires_grad_(True)
 
     # Prepare model for training
     model.train()
@@ -86,7 +88,6 @@ def finetune(cfg: DictConfig):
         use_orig_params=True,
         sync_module_states=True,
         cpu_offload=False,
-        # activation_checkpointing_policy=auto_wrap_policy,
         limit_all_gathers=True,
     )
 
@@ -101,12 +102,13 @@ def finetune(cfg: DictConfig):
     )
 
     # Fine-tuning
-    trainer.fit(fine_tuner)
+    with Saliency(model):
+        trainer.fit(fine_tuner)
 
     # Gather and save model state dict on rank 0
     save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
     with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
-        lt_state = trainer.strategy.model.state_dict()
+        lt_state = trainer.strategy.model.state_dict()  # type: ignore
 
     # strip the Lightning prefix
     hf_state = {
