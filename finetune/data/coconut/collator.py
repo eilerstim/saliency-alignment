@@ -13,7 +13,26 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
 
     This function processes a batch of examples from the COCONut dataset, creating
     clean captions (without annotation markers) for the model while separately
-    tracking which tokens correspond to which segments for custom loss computation.
+    tracking which tokens correspond to which segment IDs for custom loss computation.
+
+    Caption Alignment:
+        The function identifies where the caption starts in the tokenized sequence by:
+        1. Extracting the assistant header (e.g., " ASSISTANT:") by comparing chat
+           templates with and without `add_generation_prompt=True`
+        2. Searching for this header in the processed `input_ids`
+        3. The caption tokens begin immediately after the header
+
+    Label Masking:
+        Labels are set to -100 (ignored in loss computation) for:
+        - All prompt tokens (BOS, user message, image tokens, assistant header)
+        - Padding tokens
+
+        Only the caption tokens (assistant's response) have valid labels.
+
+    Segment ID Alignment:
+        Segment IDs from COCONut annotations are aligned token-by-token with the
+        caption portion of `input_ids`. Each token can have multiple segment IDs
+        (e.g., when a word refers to multiple objects).
 
     Args:
         examples: List of dictionaries, each containing:
@@ -26,22 +45,20 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
 
     Returns:
         dict:
-            - input_ids (torch.Tensor): Token IDs of shape [batch_size, seq_len]
-            - attention_mask (torch.Tensor): Attention mask of shape [batch_size, seq_len]
+            - input_ids (torch.Tensor): Token IDs [batch_size, seq_len]
+            - attention_mask (torch.Tensor): Attention mask [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
-            - labels (torch.Tensor): Label IDs for training (same as input_ids with -100 for padding)
-            - masks (list of torch.Tensor): Per-token annotation masks of shape [seq_len, height, width]
+            - labels (torch.Tensor): Training targets [batch_size, seq_len]
+                -100 for prompt/padding tokens, token IDs for caption tokens
+            - segment_ids (torch.Tensor): Per-token segment IDs
+                [batch_size, seq_len, max_segments], padded with -1
+            - masks (list[torch.Tensor]): Panoptic masks [H, W] containing segment IDs
             - **batch: Additional fields provided by the processor
-    Note:
-        The function creates clean captions by removing <id: text> markers before
-        passing to the model, but separately tokenizes the annotated captions to
-        maintain alignment between tokens and their corresponding segments.
     """
     images = []
     texts = []
     captions_annotated = []
-    masks = []
-    segments_infos = []
+    panoptic_masks = []
 
     # Get the assistant header tokens by comparing with/without generation prompt
     user_messages = [
@@ -65,7 +82,6 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         image = example["image"]
         caption = example["caption"]  # annotated: contains <id: text>
         mask = example["mask"]
-        segments_info = example["segments_info"]
 
         # Parse caption and build a clean version without markers
         parsed_segments = parse_annotated_caption(caption)
@@ -97,8 +113,7 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         images.append(image)
         texts.append(prompt)
         captions_annotated.append(caption)
-        masks.append(mask)
-        segments_infos.append(segments_info)
+        panoptic_masks.append(mask)
 
     # Standard processing with clean captions
     batch = processor(
@@ -117,57 +132,55 @@ def collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     labels = input_ids.clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
-    # Build annotation_ids aligned 1:1 with input_ids
-    annotation_ids_lists: list[list[list[int]]] = [
-        [[] for _ in range(seq_len)] for _ in range(batch_size)
-    ]
+    # First pass: tokenize all captions and find max_segments
+    tokenized_segments = []
+    max_segments = 1  # At least 1 to avoid empty dimension
 
-    for i, caption in enumerate(captions_annotated):
+    for caption in captions_annotated:
+        _, cap_ann_ids = tokenize_with_annotations(
+            caption, processor.tokenizer, add_special_tokens=False
+        )
+        tokenized_segments.append(cap_ann_ids)
+        for ann_ids in cap_ann_ids:
+            if len(ann_ids) > max_segments:
+                max_segments = len(ann_ids)
+
+    # Create segment_ids tensor, padded with -1
+    segment_ids_tensor = torch.full(
+        (batch_size, seq_len, max_segments), -1, dtype=torch.long
+    )
+
+    # Collect indices and values for vectorized assignment
+    batch_idx, token_idx, seg_idx, values = [], [], [], []
+
+    for i, cap_ann_ids in enumerate(tokenized_segments):
         # Find caption start by searching for suffix tokens in input_ids
-        # (more efficient than processing prompt with each image)
         caption_start = find_sequence(input_ids[i], suffix_tokens) + len(suffix_tokens)
 
         # Mask prompt tokens for this example
         labels[i, :caption_start] = -100
 
-        # Tokenize annotated caption to get per-token annotation ids (list of lists) in caption space
-        cap_token_ids, cap_ann_ids = tokenize_with_annotations(
-            caption, processor.tokenizer, add_special_tokens=False
-        )
-
         caption_len = min(len(cap_ann_ids), seq_len - caption_start)
 
-        # Truncate/pad annotation ids to match caption_len
-        if len(cap_ann_ids) >= caption_len:
-            aligned_ann_ids = cap_ann_ids[:caption_len]
-        else:
-            pad_len = caption_len - len(cap_ann_ids)
-            aligned_ann_ids = cap_ann_ids + [[]] * pad_len
+        for j, ann_ids in enumerate(cap_ann_ids[:caption_len]):
+            for k, ann_id in enumerate(ann_ids):
+                batch_idx.append(i)
+                token_idx.append(caption_start + j)
+                seg_idx.append(k)
+                values.append(ann_id)
 
-        # Copy the annotation ID lists into the batch structure
-        for j, ann_id_list in enumerate(aligned_ann_ids):
-            if caption_start + j < seq_len:
-                annotation_ids_lists[i][caption_start + j] = ann_id_list.copy()
+    # Single vectorized assignment
+    if values:
+        segment_ids_tensor[batch_idx, token_idx, seg_idx] = torch.tensor(
+            values, dtype=torch.long
+        )
 
-    # Create per-token annotation masks [batch_size, seq_len, H, W]
-    batch_size, seq_len = input_ids.shape
-
-    # Create annotation masks for each token (list of (seq_len, H, W) tensors)
-    annotation_masks = []
-    for i, img_mask in enumerate(masks):
-        height, width = img_mask.shape[-2:]
-        annotation_masks.append(torch.zeros((seq_len, height, width), dtype=torch.bool))
-        for j, ann_ids in enumerate(annotation_ids_lists[i]):
-            token_mask = annotation_masks[i][j]
-            for ann_id in ann_ids:
-                token_mask |= img_mask == ann_id
-
-    # Segment infos left out for now, can be added if needed
     return {
         **batch,
         "input_ids": input_ids,
         "labels": labels,
-        "masks": annotation_masks,
+        "segment_ids": segment_ids_tensor,
+        "masks": panoptic_masks,
     }
 
 
@@ -184,7 +197,7 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             - caption: Ground truth caption string (with annotations)
             - mask: Segmentation mask tensor
             - segments_info: List of (segment_id, category_id) tuples
-        processor: Vision-language model processor (e.g., Qwen2VLProcessor)
+        processor: Vision-language model processor
             that handles both image and text processing.
 
     Returns:
@@ -192,26 +205,25 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             - input_ids (torch.Tensor): Token IDs for prompts [batch_size, seq_len]
             - attention_mask (torch.Tensor): Attention mask [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
-            - answers (list): List of ground truth caption strings
-            - masks (list of torch.Tensor): Per-token annotation masks of shape [seq_len, height, width]
-            - segments_infos (torch.Tensor): Tensor of shape [batch_size, max_segments, 2]
-              containing (segment_id, category_id) pairs, padded with -1
+            - answers (list[str]): List of ground truth caption strings
+            - segments (list[list[tuple[list[int], str]]]): Parsed annotation segments
+            - masks (list[torch.Tensor]): Panoptic masks [H, W] containing segment IDs
             - **batch: Additional fields provided by the processor
-    Note:
-        Unlike train_collate_fn, this uses add_generation_prompt=True to prepare
-        the input for text generation during evaluation.
     """
     images = []
     texts = []
     answers = []
-    masks = []
-    segments_infos = []
+    panoptic_masks = []
+    all_segments = []
 
     for example in examples:
         image = example["image"]
-        ground_truth = example["caption"]
+        caption = example["caption"]
         mask = example["mask"]
-        segments_info = example["segments_info"]
+
+        # Parse annotated caption to get segments
+        parsed_segments = parse_annotated_caption(caption)
+        clean_caption = "".join(text for _, text in parsed_segments)
 
         images.append(image)
         messages = [
@@ -227,9 +239,9 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             messages, tokenize=False, add_generation_prompt=True
         )
         texts.append(prompt)
-        answers.append(ground_truth)
-        masks.append(mask)
-        segments_infos.append(segments_info)
+        answers.append(clean_caption)
+        panoptic_masks.append(mask)
+        all_segments.append(parsed_segments)
 
     batch = processor(text=texts, images=images, return_tensors="pt", padding=True)
 
@@ -239,28 +251,11 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
     labels = input_ids.clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100
 
-    # Convert segments_infos to tensor
-    # Find max number of segments across the batch
-    batch_size = len(segments_infos)
-    max_segments = max(len(si) for si in segments_infos) if segments_infos else 1
-    max_segments = max(max_segments, 1)  # Ensure at least 1
-
-    # Create tensor and fill with -1 (padding)
-    segments_infos_tensor = torch.full(
-        (batch_size, max_segments, 2), -1, dtype=torch.long
-    )
-    for i, seg_info in enumerate(segments_infos):
-        if seg_info:
-            segments_infos_tensor[i, : len(seg_info)] = torch.tensor(
-                seg_info, dtype=torch.long
-            )
-    segments_infos = segments_infos_tensor
-
     return {
         **batch,
         "input_ids": input_ids,
         "labels": labels,
         "answers": answers,
-        "masks": masks,
-        "segments_infos": segments_infos,
+        "segments": all_segments,
+        "masks": panoptic_masks,
     }
