@@ -44,9 +44,6 @@ class COCONutPanCapDataset(Dataset):
             data_cfg: Configuration containing data directory and annotation file paths.
             split: Dataset split to load, either "train" or "validation".
         """
-        download_coco(data_cfg)
-        download_coconut(data_cfg)
-
         self.data_cfg = data_cfg
         self.split = split
 
@@ -70,35 +67,20 @@ class COCONutPanCapDataset(Dataset):
             ann["file_name"]: ann for ann in self.annotations_list
         }
 
-        # Filter images to only those with captions available
-        # The length is determined by available caption files
-        caption_files = list(self.captions_dir.glob("*.txt"))
-        caption_basenames = {f.stem for f in caption_files}
-
-        # Filter images to only include those with captions
-        images_with_captions = [
-            img
-            for img in self.images
-            if img["file_name"].split(".")[0] in caption_basenames
-        ]
-
         # Deterministic 90/10 split via index sampling with a fixed seed
-        n_total = len(images_with_captions)
+        n_total = len(self.images)
         n_train = int(0.9 * n_total)
 
-        # Use torch.Generator for reproducible sampling that does not affect global RNG
-        g = torch.Generator()  # Seed already set in main script
-
-        perm = torch.randperm(n_total, generator=g).tolist()
+        perm = torch.randperm(n_total).tolist()
         train_idx = set(perm[:n_train])
 
         if split == "train":
             self.images = [
-                images_with_captions[i] for i in range(n_total) if i in train_idx
+                self.images[i] for i in range(n_total) if i in train_idx
             ]
         else:  # "validation"
             self.images = [
-                images_with_captions[i] for i in range(n_total) if i not in train_idx
+                self.images[i] for i in range(n_total) if i not in train_idx
             ]
 
     def __len__(self):

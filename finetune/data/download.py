@@ -470,7 +470,7 @@ def download_coconut(data_cfg: DictConfig):
         captions_tar_path.unlink()  # remove the tar file after extraction
 
         # Rename the extracted folder
-        extracted_folder = extract_root / "coconut_pancap_50k"
+        extracted_folder = extract_root / "caption_train2017"
         if extracted_folder.exists():
             if output_captions_dir.exists():
                 shutil.rmtree(output_captions_dir)
