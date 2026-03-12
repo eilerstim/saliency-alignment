@@ -205,8 +205,8 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
             - attention_mask (torch.Tensor): Attention mask [batch_size, seq_len]
             - pixel_values (torch.Tensor): Processed image tensor
             - answers (list[str]): List of ground truth caption strings
-            - segments (list[list[dict]]): Ground truth segments with utterance
-                and segment_ids keys, matching PNG eval format
+            - segments (list[list[tuple[list[int], str]]]): Parsed annotation
+                segments as (segment_ids, text) tuples
             - masks (list[torch.Tensor]): Panoptic masks [H, W] containing segment IDs
             - **batch: Additional fields provided by the processor
     """
@@ -221,13 +221,9 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         caption = example["caption"]
         mask = example["mask"]
 
-        # Parse annotated caption and convert to PNG-style segment dicts
+        # Parse annotated caption to get (segment_ids, text) tuples
         parsed_segments = parse_annotated_caption(caption)
         clean_caption = "".join(text for _, text in parsed_segments)
-        segments = [
-            {"utterance": text, "segment_ids": seg_ids}
-            for seg_ids, text in parsed_segments
-        ]
 
         images.append(image)
         messages = [
@@ -245,7 +241,7 @@ def eval_collate_fn(examples: list[dict], processor: ProcessorMixin) -> dict:
         texts.append(prompt)
         answers.append(clean_caption)
         panoptic_masks.append(mask)
-        all_segments.append(segments)
+        all_segments.append(parsed_segments)
 
     batch = processor(text=texts, images=images, return_tensors="pt", padding=True)
 
