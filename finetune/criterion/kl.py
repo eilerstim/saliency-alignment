@@ -33,17 +33,6 @@ class SaliencyAlignment(Criterion):
             gen_ids = labels[b] != -100
             seg_ids = segment_ids[b][gen_ids, :]  # (gen_len, max_segments)
 
-            # Upsample to annotation resolution
-            attn = F.interpolate(
-                attn.unsqueeze(1),
-                size=mask.shape,
-                mode="bilinear",
-                align_corners=False,
-            ).squeeze(1)  # (gen_len, H, W)
-
-            # Normalize attention per token -> probability distribution
-            attn = attn / (attn.sum(dim=(1, 2), keepdim=True) + 1e-8)
-
             # Build target mask
             seg_mask = (
                 mask[None, None] == seg_ids[:, :, None, None]
@@ -56,19 +45,36 @@ class SaliencyAlignment(Criterion):
 
             if not valid.any():
                 continue
+                
+            # Upsample to annotation resolution
+            attn = F.interpolate(
+                attn.unsqueeze(1),
+                size=mask.shape,
+                mode="bilinear",
+                align_corners=False,
+            ).squeeze(1)  # (gen_len, H, W)
+
 
             # Target distribution: uniform over annotated pixels
             target = token_mask.float()
+
+            # Select only valid distributions
+            attn = attn[valid]
+            target = target[valid]
+            
+            # Normalize attention per token -> probability distribution
+            attn = attn.clamp(min=0)
+            attn = attn / attn.sum(dim=(1, 2), keepdim=True).clamp(min=1e-8)
+            
             target = target / pixel_counts[:, None, None].clamp(min=1)
+            
+            # Log attention
+            log_attn = torch.log(attn.clamp(min=1e-8))
 
             # KL(target || attn)
-            kl = F.kl_div(
-                (attn + 1e-8).log(),
-                target,
-                reduction="none",
-            ).sum(dim=(1, 2))
+            kl = F.kl_div(log_attn, target, reduction="none").sum(dim=(1, 2))
 
-            scores.append(kl[valid])
+            scores.append(kl)
 
         if len(scores) == 0:
             return torch.tensor(0.0, device=preds.device)
