@@ -9,8 +9,6 @@ from omegaconf import DictConfig
 from PIL import Image
 from torch.utils.data import Dataset
 
-from finetune.data.coconut.download import download_coco, download_coconut
-
 logger = logging.getLogger(__name__)
 
 
@@ -75,13 +73,9 @@ class COCONutPanCapDataset(Dataset):
         train_idx = set(perm[:n_train])
 
         if split == "train":
-            self.images = [
-                self.images[i] for i in range(n_total) if i in train_idx
-            ]
+            self.images = [self.images[i] for i in range(n_total) if i in train_idx]
         else:  # "validation"
-            self.images = [
-                self.images[i] for i in range(n_total) if i not in train_idx
-            ]
+            self.images = [self.images[i] for i in range(n_total) if i not in train_idx]
 
     def __len__(self):
         """Return the total number of images in the dataset.

@@ -10,7 +10,10 @@ export HF_HOME="$PROJECT_DIR/.hf/"
 export UV_CACHE_DIR="$PROJECT_DIR/.uv/"
 export UV_PROJECT_ENVIRONMENT="$PROJECT_DIR/.venv"
 
-module load stack/2024-06 gcc/12.2.0 python/3.11.6 cuda/11.3.1 eth_proxy
+export TORCHINDUCTOR_CACHE_DIR=$SCRATCH/.torchinductor
+export TRITON_CACHE_DIR=$SCRATCH/.triton
+
+module load stack/2024-06 gcc/12.2.0 python/3.12.8 cuda/12.8.0 eth_proxy
 
 # Ensure uv is available
 if ! command -v uv >/dev/null 2>&1; then

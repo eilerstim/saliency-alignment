@@ -1,7 +1,7 @@
 import lightning as L
 import torch
 from hydra.utils import instantiate
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
@@ -127,7 +127,9 @@ class FineTuner(L.LightningModule):
             self.cfg.data.eval_collator, processor=self.processor, _partial_=True
         )
 
-        dl_kwargs = getattr(self.cfg, "dataloader", {})
+        dl_kwargs = OmegaConf.to_container(
+            getattr(self.cfg, "dataloader", {}), resolve=True
+        )
         dl_kwargs["shuffle"] = False  # No shuffling for validation
 
         return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)

@@ -38,6 +38,9 @@ class SaliencyAlignment(Criterion):
 
             gen_ids = labels[b] != -100
             seg_ids = segment_ids[b][gen_ids, :]  # (gen_len, max_segments)
+            
+            gen_len = gen_ids.sum().item()
+            attn = attn[-gen_len:]
 
             # Upsample attn to match annotation size (gen_len, H, W)
             attn = F.interpolate(

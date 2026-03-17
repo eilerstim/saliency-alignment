@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 from functools import partial
 
@@ -49,7 +50,7 @@ def finetune(cfg: DictConfig):
 
     # Freeze entire model except language model head
     model.requires_grad_(False)
-    model.multi_modal_projector.requires_grad_(True)
+    model.model.multi_modal_projector.requires_grad_(True)
 
     # Prepare model for training
     model.train()
@@ -102,7 +103,8 @@ def finetune(cfg: DictConfig):
     )
 
     # Fine-tuning
-    with Saliency(model):
+    attn_scale = 1.0 / math.sqrt(128)  # TODO: Why does it need to be hardcoded
+    with Saliency(model, attn_scale=attn_scale, backend="torch_eager"):
         trainer.fit(fine_tuner)
 
     # Gather and save model state dict on rank 0
