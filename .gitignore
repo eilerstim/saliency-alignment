@@ -10,7 +10,7 @@ wheels/
 .venv
 
 # Cache
-.*_cache
+.*cache
 .hf/
 .uv/
 
