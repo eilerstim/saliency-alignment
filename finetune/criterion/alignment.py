@@ -6,7 +6,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from finetune.criterion import Criterion
-from vl_saliency.core.grid import SaliencyGrid
+from vl_saliency.maps import SaliencyGrid
 
 
 class SaliencyAlignment(Criterion):

@@ -3,7 +3,7 @@ from typing import Any
 from jaxtyping import Float, Int
 from torch import Tensor
 
-from vl_saliency.core.grid import SaliencyGrid
+from vl_saliency.maps import SaliencyGrid
 
 from .base import Criterion
 

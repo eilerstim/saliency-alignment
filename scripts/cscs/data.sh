@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=a163
+#SBATCH --account=infra01
 #SBATCH --time=2:00:00
 #SBATCH --job-name=data
 #SBATCH --output=logs/%x_%j.out

@@ -538,11 +538,11 @@ def download_png(data_cfg: DictConfig):
 @hydra.main(
     version_base="1.3",
     config_path="../../configs/data/",
-    config_name="png",
+    config_name="coconut",
 )
 def main(cfg: DictConfig) -> None:
     download_coco(cfg)
-    download_png(cfg)
+    download_coconut(cfg)
 
 
 if __name__ == "__main__":

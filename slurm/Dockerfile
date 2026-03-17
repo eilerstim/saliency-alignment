@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:25.02-py3
+FROM nvcr.io/nvidia/pytorch:26.02-py3
 
 # Configure project dir
 ARG PROJECT_DIR=/workspace
