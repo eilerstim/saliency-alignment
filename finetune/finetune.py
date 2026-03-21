@@ -1,6 +1,5 @@
 import logging
 import os
-from functools import partial
 
 import hydra
 import lightning as L
@@ -8,23 +7,13 @@ import torch
 from hydra.core.hydra_config import HydraConfig
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
-from lightning.pytorch.strategies import FSDPStrategy
 from omegaconf import DictConfig, OmegaConf
-from torch.distributed.fsdp.api import (
-    FullStateDictConfig,
-    MixedPrecision,
-    ShardingStrategy,
-    StateDictType,
-)
-from torch.distributed.fsdp.fully_sharded_data_parallel import (
-    FullyShardedDataParallel as FSDP,
-)
-from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
 from vl_saliency import Saliency
 
 from .lightning import FineTuner
+from .strategy import load_lt_state, load_strategy
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +33,21 @@ def finetune(cfg: DictConfig):
     torch.set_float32_matmul_precision("high")
 
     # Instantiate model and processor
-    model = AutoModelForImageTextToText.from_pretrained(cfg.model.name)
+    model = AutoModelForImageTextToText.from_pretrained(
+        cfg.model.name, dtype=torch.float32
+    )
     processor = AutoProcessor.from_pretrained(cfg.model.name)
 
     # Freeze entire model except language model head
     model.requires_grad_(False)
     model.model.multi_modal_projector.requires_grad_(True)
+    model.model.multi_modal_projector.to(torch.float32)
 
     # Prepare model for training
     model.train()
     model.gradient_checkpointing_enable(
         gradient_checkpointing_kwargs={"use_reentrant": False}
     )
-    model.config.use_cache = False
 
     # Prepare loggers
     loggers = [
@@ -70,33 +61,12 @@ def finetune(cfg: DictConfig):
         ),
     ]
 
-    # Wrap large modules (Transformer blocks)
-    auto_wrap_policy = partial(
-        size_based_auto_wrap_policy,
-        min_num_params=int(2e7),
-    )
-
-    # Define FSDP strategy with mixed precision (ZeRO-3 equivalent)
-    strategy = FSDPStrategy(
-        auto_wrap_policy=auto_wrap_policy,
-        sharding_strategy=ShardingStrategy.FULL_SHARD,
-        mixed_precision=MixedPrecision(
-            param_dtype=torch.bfloat16,
-            reduce_dtype=torch.bfloat16,
-            buffer_dtype=torch.bfloat16,
-        ),
-        use_orig_params=True,
-        sync_module_states=True,
-        cpu_offload=False,
-        limit_all_gathers=True,
-    )
-
     # Instantiate fine-tuner and trainer
     fine_tuner = FineTuner(cfg, model, processor)
     trainer = L.Trainer(
         default_root_dir=hydra_wd,
         logger=loggers,
-        strategy=strategy,
+        strategy=load_strategy(cfg.strategy),
         plugins=[SLURMEnvironment()],
         **cfg.trainer,
     )
@@ -106,20 +76,11 @@ def finetune(cfg: DictConfig):
         trainer.fit(fine_tuner)
 
     # Gather and save model state dict on rank 0
-    save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-    with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
-        lt_state = trainer.strategy.model.state_dict()  # type: ignore
-
-    # strip the Lightning prefix
-    hf_state = {
-        k.removeprefix("model."): v
-        for k, v in lt_state.items()
-        if k.startswith("model.")
-    }
+    state = load_lt_state(cfg.strategy, trainer, model)
 
     # Save model and processor
     if rank == 0:
         save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
-        model.save_pretrained(save_dir, state_dict=hf_state)
+        model.save_pretrained(save_dir, state_dict=state)
         processor.save_pretrained(save_dir)
         logger.info(f"Model weights saved to {save_dir}")

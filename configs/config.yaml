@@ -8,6 +8,7 @@ defaults:
   - _self_
 
 seed: 42
+strategy: fsdp
 
 checkpoint_dir: models
 run_id: ${oc.env:SLURM_JOB_NAME}_${oc.env:MODEL}_${oc.env:CRITERION}_w${oc.env:LAMBDA}_${oc.env:SLURM_JOB_ID}
