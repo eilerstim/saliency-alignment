@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 from functools import partial
 
@@ -103,8 +102,7 @@ def finetune(cfg: DictConfig):
     )
 
     # Fine-tuning
-    attn_scale = 1.0 / math.sqrt(128)  # TODO: Why does it need to be hardcoded
-    with Saliency(model, attn_scale=attn_scale, backend="torch_eager"):
+    with Saliency(model, backend="torch_eager"):
         trainer.fit(fine_tuner)
 
     # Gather and save model state dict on rank 0
