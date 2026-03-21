@@ -86,12 +86,12 @@ class Criterion(ABC):
             token_mask = seg_mask.any(dim=1)
 
             loss = self.compute_loss(attn, token_mask)
-            losses.append(losses)
+            losses.append(loss)
 
         if len(losses) == 0:
             return torch.tensor(0.0, device=preds.device)
 
-        loss = torch.cat(losses).mean()
+        loss = torch.stack(losses).mean()
         return self.weight * loss
 
     @abstractmethod
