@@ -23,11 +23,11 @@ class FineTuner(L.LightningModule):
         self.auxiliary_loss: Criterion = instantiate(self.cfg.loss)
 
     def forward(self, **batch):
-        return self.model(**batch)
+        return self.model(**batch, return_dict=True)
 
     def training_step(self, batch: dict, batch_idx: int):
         # Forward pass with saliency accumulation
-        outputs = self.model(**batch, return_dict=True)
+        outputs = self(**batch)
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -41,19 +41,22 @@ class FineTuner(L.LightningModule):
 
         # Log relevant metrics
         log_dict = {
-            "train/ce_loss": loss,
+            "train/ce_loss": loss.detach(),
             "train/auxiliary_loss": auxiliary_loss,
-            # "train/loss": loss + auxiliary_loss,
+            "train/loss": loss + auxiliary_loss,
         }
         self.log_dict(
-            log_dict, prog_bar=True, sync_dist=True, batch_size=len(batch["input_ids"])
+            log_dict,
+            prog_bar=True,
+            sync_dist=True,
+            batch_size=batch["input_ids"].size(0),
         )
 
-        return auxiliary_loss
+        return loss + auxiliary_loss
 
     def validation_step(self, batch: dict, batch_idx: int):
         # Forward pass with saliency accumulation
-        outputs = self.model(**batch, return_dict=True)
+        outputs = self(**batch)
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -88,15 +91,19 @@ class FineTuner(L.LightningModule):
         log_dict = {
             "val/ce_loss": loss,
             "val/auxiliary_loss": auxiliary_loss,
-            # "val/loss": loss + auxiliary_loss,
+            "val/loss": loss + auxiliary_loss,
             "val/accuracy": accuracy,
         }
         self.log_dict(
-            log_dict, prog_bar=True, sync_dist=True, batch_size=len(batch["input_ids"])
+            log_dict,
+            prog_bar=True,
+            sync_dist=True,
+            batch_size=batch["input_ids"].size(0),
         )
 
     def configure_optimizers(self) -> tuple:
-        optimizer = instantiate(self.cfg.optim, params=self.model.parameters())
+        params = [p for p in self.model.parameters() if p.requires_grad]
+        optimizer = instantiate(self.cfg.optim, params=params)
 
         if "scheduler" not in self.cfg:
             return optimizer
