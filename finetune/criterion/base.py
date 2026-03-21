@@ -72,9 +72,11 @@ class Criterion(ABC):
                 align_corners=False,  # type: ignore
             ).squeeze(1)
 
-            # Normalize per generated token
-            denom = attn.sum(dim=(1, 2), keepdim=True).clamp(min=1e-6)
-            attn = attn / denom
+            # Normalize to distribution
+            attn = attn.float()  # Ensure fp32
+            attn = attn.flatten(1)  # (gen_len, H * W)
+            attn = torch.softmax(attn, dim=1)
+            attn = attn.view(-1, *mask.shape)  # (gen_len, H, W)
 
             # Build mask without -1
             valid_seg = seg_ids != -1  # (N, max_segments)
