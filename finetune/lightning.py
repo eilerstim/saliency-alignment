@@ -33,7 +33,6 @@ class FineTuner(L.LightningModule):
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
-            input_ids=batch["input_ids"],
             segment_ids=batch["segment_ids"],
             preds=outputs.logits,
             saliency=outputs.saliency,
@@ -44,13 +43,13 @@ class FineTuner(L.LightningModule):
         log_dict = {
             "train/ce_loss": loss,
             "train/auxiliary_loss": auxiliary_loss,
-            "train/loss": loss + auxiliary_loss,
+            # "train/loss": loss + auxiliary_loss,
         }
         self.log_dict(
             log_dict, prog_bar=True, sync_dist=True, batch_size=len(batch["input_ids"])
         )
 
-        return loss + auxiliary_loss
+        return auxiliary_loss
 
     def validation_step(self, batch: dict, batch_idx: int):
         # Forward pass with saliency accumulation
@@ -60,7 +59,6 @@ class FineTuner(L.LightningModule):
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
-            input_ids=batch["input_ids"],
             segment_ids=batch["segment_ids"],
             preds=outputs.logits,
             saliency=outputs.saliency,
@@ -90,7 +88,7 @@ class FineTuner(L.LightningModule):
         log_dict = {
             "val/ce_loss": loss,
             "val/auxiliary_loss": auxiliary_loss,
-            "val/loss": loss + auxiliary_loss,
+            # "val/loss": loss + auxiliary_loss,
             "val/accuracy": accuracy,
         }
         self.log_dict(

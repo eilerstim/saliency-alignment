@@ -1,9 +1,5 @@
-from typing import Any
-
-from jaxtyping import Float, Int
-from torch import Tensor
-
-from vl_saliency.maps import SaliencyGrid
+import torch
+from jaxtyping import Bool, Float
 
 from .base import Criterion
 
@@ -13,12 +9,7 @@ class ZeroCriterion(Criterion):
 
     def compute_loss(
         self,
-        labels: Int[Tensor, "B S"],
-        input_ids: Int[Tensor, "B S"],
-        segment_ids: Int[Tensor, "B S"],
-        preds: Float[Tensor, "B T V"],
-        saliency: SaliencyGrid,
-        masks: list[Tensor],
-        **kwargs: Any,
-    ) -> Float[Tensor, "1"]:
-        return preds.new_zeros(1)
+        attn: Float[torch.Tensor, "S H W"],
+        mask: Bool[torch.Tensor, "S H W"],
+    ) -> Float[torch.Tensor, "1"]:
+        return torch.tensor(0.0, device=attn.device)
