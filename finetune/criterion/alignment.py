@@ -37,10 +37,18 @@ class SaliencyAlignment(Criterion):
             )  # (gen_len, patch_H, patch_W)
 
             gen_ids = labels[b] != -100
-            seg_ids = segment_ids[b][gen_ids, :]  # (gen_len, max_segments)
-            
-            gen_len = gen_ids.sum().item()
+            seg_ids = segment_ids[b][gen_ids]  # (gen_len, max_segments)
+
+            gen_len = seg_ids.shape[0]
             attn = attn[-gen_len:]
+
+            # Filter tokens with segments only
+            has_segments = (seg_ids != -1).any(dim=1)
+            if not has_segments.any():
+                continue
+
+            seg_ids = seg_ids[has_segments]
+            attn = attn[has_segments]
 
             # Upsample attn to match annotation size (gen_len, H, W)
             attn = F.interpolate(
@@ -51,24 +59,23 @@ class SaliencyAlignment(Criterion):
             ).squeeze(1)
 
             # Normalize per generated token
-            attn = attn / (attn.sum(dim=(1, 2), keepdim=True) + 1e-8)
+            denom = attn.sum(dim=(1, 2), keepdim=True).clamp(min=1e-6)
+            attn = attn / denom
 
-            seg_mask = (
-                mask[None, None] == seg_ids[:, :, None, None]
-            )  # (gen_len, max_segments, H, W)
+            # Build mask without -1
+            valid_seg = seg_ids != -1  # (N, max_segments)
+            seg_mask = (mask[None, None] == seg_ids[:, :, None, None]) & valid_seg[
+                :, :, None, None
+            ]  # (gen_len, max_segments, H, W)
 
             # merge annotations per token -> (gen_len, H, W)
             token_mask = seg_mask.any(dim=1)
-
             pixel_counts = token_mask.sum(dim=(1, 2))
-            valid = token_mask.sum(dim=(1, 2)) > 0  # (gen_len,)
 
-            diff = (attn - 1.0) ** 2
-            loss_per_token = (diff * token_mask).sum(dim=(1, 2)) / pixel_counts.clamp(
-                min=1
-            )
+            target = token_mask / pixel_counts[:, None, None]
+            loss = ((attn - target) ** 2).sum(dim=(1, 2))
 
-            scores.append(loss_per_token[valid].flatten())
+            scores.append(loss)
 
         if len(scores) == 0:
             return torch.tensor(0.0, device=preds.device)
