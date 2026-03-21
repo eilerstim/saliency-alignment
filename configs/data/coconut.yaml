@@ -21,11 +21,11 @@ dataset:
 
 # Collator configuration
 collator:
-  _target_: finetune.data.coconut.collator.train_collate_fn
+  _target_: finetune.data.coconut.collator.collate_fn
   # processor will be passed at runtime via partial
 
 eval_collator:
-  _target_: finetune.data.coconut.collator.eval_collate_fn
+  _target_: finetune.data.coconut.collator.collate_fn
   # processor will be passed at runtime via partial
 
 # COCONut-specific paths
