@@ -42,8 +42,8 @@ class FineTuner(L.LightningModule):
         # Log relevant metrics
         log_dict = {
             "train/ce_loss": loss.detach(),
-            "train/auxiliary_loss": auxiliary_loss,
-            "train/loss": loss + auxiliary_loss,
+            "train/auxiliary_loss": auxiliary_loss.detach(),
+            "train/loss": loss.detach() + auxiliary_loss.detach(),
         }
         self.log_dict(
             log_dict,

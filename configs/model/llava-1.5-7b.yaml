@@ -1,1 +1,12 @@
 name: llava-hf/llava-1.5-7b-hf
+
+dtype: bfloat16
+
+gradient_checkpointing: true
+freeze:
+- vision_tower
+- multi_modal_projector
+# - all 
+
+unfreeze: []
+# - multi_modal_projector

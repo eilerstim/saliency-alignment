@@ -1,6 +1,6 @@
 # @package dataloader
 num_workers: 12
-batch_size: 16                      
+batch_size: 24                      
 persistent_workers: True            # keeps workers alive across iterations
 prefetch_factor: 2                  # tune with your I/O
 pin_memory: true                    # recommended for GPU training

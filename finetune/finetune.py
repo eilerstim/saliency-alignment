@@ -8,11 +8,11 @@ from hydra.core.hydra_config import HydraConfig
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
-from transformers import AutoModelForImageTextToText, AutoProcessor
 
 from vl_saliency import Saliency
 
 from .lightning import FineTuner
+from .model import build_model
 from .strategy import load_lt_state, load_strategy
 
 logger = logging.getLogger(__name__)
@@ -32,34 +32,19 @@ def finetune(cfg: DictConfig):
     L.seed_everything(cfg.seed)
     torch.set_float32_matmul_precision("high")
 
-    # Instantiate model and processor
-    model = AutoModelForImageTextToText.from_pretrained(
-        cfg.model.name, dtype=torch.float32
-    )
-    processor = AutoProcessor.from_pretrained(cfg.model.name)
+    # Prepare model and processor as defined in config
+    model, processor = build_model(cfg.model)
 
-    # Freeze entire model except language model head
-    model.requires_grad_(False)
-    model.model.multi_modal_projector.requires_grad_(True)
-    model.model.multi_modal_projector.to(torch.float32)
-
-    # Prepare model for training
-    model.train()
-    model.gradient_checkpointing_enable(
-        gradient_checkpointing_kwargs={"use_reentrant": False}
-    )
-
-    # Prepare loggers
-    loggers = [
-        CSVLogger(save_dir=f"{hydra_wd}/logs", name="training_logs"),
-        WandbLogger(
-            project=cfg.wandb.project,
-            entity=cfg.wandb.entity,
-            name=cfg.wandb.name,
-            save_dir=hydra_wd,
-            config=OmegaConf.to_container(cfg, resolve=True),
-        ),
-    ]
+    # Loggers
+    loggers = [CSVLogger(save_dir=f"{hydra_wd}/logs", name="training_logs")]
+    if cfg.wandb:
+        loggers.append(
+            WandbLogger(
+                **cfg.wandb,
+                save_dir=hydra_wd,
+                config=OmegaConf.to_container(cfg, resolve=True),
+            )
+        )
 
     # Instantiate fine-tuner and trainer
     fine_tuner = FineTuner(cfg, model, processor)

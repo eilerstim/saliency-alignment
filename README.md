@@ -23,7 +23,6 @@ pip install -e .[dev]
 
 The framework currently supports the following Vision-Language Models:
 - **LLaVA 1.5 7B** (`llava-hf/llava-1.5-7b-hf`)
-- **LLaVA v1.6 Mistral 7B** (`llava-hf/llava-v1.6-mistral-7b-hf`)
 
 Additional vision-language models can be easily added through the configuration system.
 

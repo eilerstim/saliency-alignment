@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gpus-per-node=4
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=320G
 #SBATCH --environment=saliency
 #SBATCH -C thp_never&nvidia_vboost_enabled
@@ -16,7 +16,7 @@
 source ./scripts/cscs/env.sh
 
 
-export CRITERION=alignment
+export CRITERION=kl
 export MODEL=llava-1.5-7b
 export LAMBDA=0.5
 
@@ -31,6 +31,8 @@ srun $PROJECT_DIR/.venv/bin/python -m finetune \
     loss=$CRITERION \
     loss.weight=$LAMBDA \
     model=$MODEL \
-    data=png
+    # trainer.accumulate_grad_batches=1 \
+    # strategy=ddp \
+    # data=png \
 
 echo "Finished finetuning at $(date)"
