@@ -55,8 +55,15 @@ class COCONutPanCapDataset(Dataset):
         with open(ann_file) as f:
             self.annotations = json.load(f)
 
-        # Extract image information
-        self.images = self.annotations["images"]
+        # Filter out images that do not have a corresponding caption file
+        self.images = []
+        for img in self.annotations["images"]:
+            caption_filename = f"{img['file_name'].split('.')[0]}.txt"
+            if (self.captions_dir / caption_filename).exists():
+                self.images.append(img)
+            else:
+                logger.info(f"Skipping {img['file_name']}, no caption found.")
+
         self.img_id_to_info = {img["id"]: img for img in self.images}
 
         # Create mapping from file_name to annotation (segments_info)
