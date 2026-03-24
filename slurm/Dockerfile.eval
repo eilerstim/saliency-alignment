@@ -1,4 +1,4 @@
-FROM vllm/vllm-openai:latest
+FROM docker.io/vllm/vllm-openai:latest
 
 # Configure project dir
 ARG PROJECT_DIR=/workspace

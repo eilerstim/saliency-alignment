@@ -21,7 +21,7 @@ def load_strategy(strategy: str):
         # Wrap large modules (Transformer blocks)
         auto_wrap_policy = partial(
             size_based_auto_wrap_policy,
-            min_num_params=int(2e7),
+            min_num_params=int(1e6),
         )
 
         # FSDP strategy with mixed precision

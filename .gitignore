@@ -41,3 +41,6 @@ core_nid*
 
 # IDE settings
 .vscode
+
+# Figures
+figs/

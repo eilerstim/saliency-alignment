@@ -116,9 +116,7 @@ class FineTuner(L.LightningModule):
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
 
         # Get collator function and bind processor via partial
-        collate_fn = instantiate(
-            self.cfg.data.collator, processor=self.processor, _partial_=True
-        )
+        collate_fn = instantiate(self.cfg.data.collator, processor=self.processor)
 
         dl_kwargs = getattr(self.cfg, "dataloader", {})
         return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
@@ -128,9 +126,7 @@ class FineTuner(L.LightningModule):
         dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
 
         # Get eval collator function and bind processor via partial
-        collate_fn = instantiate(
-            self.cfg.data.eval_collator, processor=self.processor, _partial_=True
-        )
+        collate_fn = instantiate(self.cfg.data.eval_collator, processor=self.processor)
 
         dl_kwargs = OmegaConf.to_container(
             getattr(self.cfg, "dataloader", {}), resolve=True

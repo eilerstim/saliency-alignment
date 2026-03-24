@@ -4,6 +4,9 @@ import re
 
 from transformers import PreTrainedTokenizer
 
+# Precompile — avoids re.compile on every call to parse_annotated_caption
+_ANNOTATION_RE = re.compile(r"<\s*([\d,\s]+)\s*:\s*([^>]+)>")
+
 
 def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
     """Parse a caption with segment annotations into (annotation_ids, text) pairs.
@@ -17,23 +20,21 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
     [([62, 63, 48], "Additional people")]
 
     Args:
-        caption: Caption string with annotations in format "<id: text>" or "<id1,id2,...: text>".
+        caption: Caption string with annotations in format "<id: text>" or
+            "<id1,id2,...: text>".
 
     Returns:
-        List of (annotation_ids, text) tuples where annotation_ids is an empty list for
-        non-annotated text and a list of segment IDs for annotated spans.
+        List of (annotation_ids, text) tuples where annotation_ids is an empty
+        list for non-annotated text and a list of segment IDs for annotated spans.
     """
-    # Pattern to match annotations like "<1: a dog>" or "< 62,63,48: Additional people>"
-    pattern = r"<\s*([\d,\s]+)\s*:\s*([^>]+)>"
-
     result: list[tuple[list[int], str]] = []
     last_end = 0
 
-    for match in re.finditer(pattern, caption):
+    for match in _ANNOTATION_RE.finditer(caption):
         # Add any text before this annotation (with empty annotation list)
         if match.start() > last_end:
             text_before = caption[last_end : match.start()]
-            if text_before:  # Only add if non-empty
+            if text_before:
                 result.append(([], text_before))
 
         # Parse the comma-separated segment IDs
@@ -49,7 +50,6 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
         ]
 
         result.append((id_list, annotated_text))
-
         last_end = match.end()
 
     # Add any remaining text after the last annotation
@@ -61,53 +61,68 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
     return result
 
 
-def tokenize_with_annotations(
-    caption: str, tokenizer: PreTrainedTokenizer, add_special_tokens: bool = False
+def tokenize_from_parsed(
+    parsed_segments: list[tuple[list[int], str]],
+    tokenizer: PreTrainedTokenizer,
+    add_special_tokens: bool = False,
 ) -> tuple[list[int], list[list[int]]]:
-    """Tokenize a caption while preserving segment annotation information.
+    """Tokenize already-parsed segments while preserving annotation info.
+
+    This avoids re-parsing when the caller has already called
+    ``parse_annotated_caption``.
 
     Args:
-        caption: Caption string with annotations in format "<id: text>" or "<id1,id2,...: text>".
+        parsed_segments: Output of ``parse_annotated_caption``.
         tokenizer: HuggingFace tokenizer to use.
         add_special_tokens: Whether to add special tokens (BOS/EOS).
 
     Returns:
         Tuple of (token_ids, annotation_ids) where:
-        - token_ids: List of token IDs for the full caption
-        - annotation_ids: List of lists of segment IDs (empty list for non-annotated text)
-          corresponding to each token. Each token gets a list of all region IDs it refers to.
+        - token_ids: List of token IDs for the full caption.
+        - annotation_ids: List of annotation-ID lists, one per token.
     """
-    # Parse caption into annotated segments
-    segments = parse_annotated_caption(caption)
+    all_token_ids: list[int] = []
+    all_annotation_ids: list[list[int]] = []
 
-    all_token_ids = []
-    all_annotation_ids = []
-
-    # Tokenize each segment and track which annotations it belongs to
-    for annotation_id_list, text in segments:
-        # Tokenize without special tokens - we'll add them once at the end if needed
+    for annotation_id_list, text in parsed_segments:
         token_ids = tokenizer.encode(text, add_special_tokens=False)
-
-        # Record which annotations each token belongs to (same list for all tokens in this segment)
-        annotation_ids = [annotation_id_list.copy()] * len(token_ids)
-
+        # All tokens in this segment share the same annotation list
         all_token_ids.extend(token_ids)
-        all_annotation_ids.extend(annotation_ids)
+        all_annotation_ids.extend([annotation_id_list] * len(token_ids))
 
-    # Add special tokens if requested
     if add_special_tokens:
         if tokenizer.bos_token_id is not None:
-            all_token_ids = [tokenizer.bos_token_id] + all_token_ids
-            all_annotation_ids = [
-                []
-            ] + all_annotation_ids  # BOS gets empty annotation list
+            all_token_ids.insert(0, tokenizer.bos_token_id)
+            all_annotation_ids.insert(0, [])
         if tokenizer.eos_token_id is not None:
-            all_token_ids = all_token_ids + [tokenizer.eos_token_id]
-            all_annotation_ids = all_annotation_ids + [
-                []
-            ]  # EOS gets empty annotation list
+            all_token_ids.append(tokenizer.eos_token_id)
+            all_annotation_ids.append([])
 
     return all_token_ids, all_annotation_ids
+
+
+def tokenize_with_annotations(
+    caption: str,
+    tokenizer: PreTrainedTokenizer,
+    add_special_tokens: bool = False,
+) -> tuple[list[int], list[list[int]]]:
+    """Tokenize a caption while preserving segment annotation information.
+
+    Convenience wrapper that parses *and* tokenizes in one call.
+
+    Args:
+        caption: Caption string with annotations in format "<id: text>" or
+            "<id1,id2,...: text>".
+        tokenizer: HuggingFace tokenizer to use.
+        add_special_tokens: Whether to add special tokens (BOS/EOS).
+
+    Returns:
+        Tuple of (token_ids, annotation_ids) where:
+        - token_ids: List of token IDs for the full caption.
+        - annotation_ids: List of annotation-ID lists, one per token.
+    """
+    segments = parse_annotated_caption(caption)
+    return tokenize_from_parsed(segments, tokenizer, add_special_tokens)
 
 
 def batch_tokenize_with_annotations(
@@ -129,8 +144,8 @@ def batch_tokenize_with_annotations(
     Returns:
         Tuple of (batch_token_ids, batch_annotation_ids) where:
         - batch_token_ids: List of token ID lists [batch_size, seq_len]
-        - batch_annotation_ids: List of annotation ID lists [batch_size, seq_len, num_regions]
-          where each token has a list of region IDs it refers to
+        - batch_annotation_ids: List of annotation ID lists
+          [batch_size, seq_len, num_regions]
     """
     batch_token_ids = []
     batch_annotation_ids = []
@@ -140,7 +155,6 @@ def batch_tokenize_with_annotations(
             caption, tokenizer, add_special_tokens=add_special_tokens
         )
 
-        # Apply max_length truncation if specified
         if max_length is not None and len(token_ids) > max_length:
             token_ids = token_ids[:max_length]
             annotation_ids = annotation_ids[:max_length]
@@ -148,7 +162,6 @@ def batch_tokenize_with_annotations(
         batch_token_ids.append(token_ids)
         batch_annotation_ids.append(annotation_ids)
 
-    # Apply padding if requested
     if padding:
         max_len = max(len(seq) for seq in batch_token_ids)
         if max_length is not None:
@@ -161,12 +174,8 @@ def batch_tokenize_with_annotations(
         for i in range(len(batch_token_ids)):
             padding_length = max_len - len(batch_token_ids[i])
             if padding_length > 0:
-                batch_token_ids[i] = (
-                    batch_token_ids[i] + [pad_token_id] * padding_length
-                )
-                batch_annotation_ids[i] = (
-                    batch_annotation_ids[i] + [[]] * padding_length
-                )
+                batch_token_ids[i] += [pad_token_id] * padding_length
+                batch_annotation_ids[i] += [[]] * padding_length
 
     return batch_token_ids, batch_annotation_ids
 
@@ -176,32 +185,19 @@ def map_annotations_to_segments(
 ) -> list[list[int]]:
     """Map annotation IDs to segment category IDs.
 
-    This converts the annotation tracking (which uses the reference numbers from
-    the caption like <1: ...>, <2,3: ...>) to the actual category IDs from the
-    segmentation mask.
+    Converts annotation tracking (reference numbers from the caption like
+    ``<1: ...>``, ``<2,3: ...>``) to category IDs from the segmentation mask.
 
     Args:
-        annotation_ids: List of annotation ID lists. Each token has a list of region IDs.
-                       Empty list for non-annotated tokens.
+        annotation_ids: List of annotation ID lists per token.
         segments_info: List of (segment_id, category_id) tuples from COCONut.
 
     Returns:
-        List of category ID lists corresponding to each token's annotation IDs.
-        Returns empty list for non-annotated tokens and for annotations without matches.
+        List of category ID lists corresponding to each token's annotations.
     """
-    # Build mapping from segment_id to category_id
-    # segments_info contains (segment_id, category_id) tuples
-    segment_to_category = {seg_id: category_id for seg_id, category_id in segments_info}
+    segment_to_category = {seg_id: cat_id for seg_id, cat_id in segments_info}
 
-    # Map each token's annotation IDs to their categories
-    category_id_lists = []
-    for ann_id_list in annotation_ids:
-        # Map each annotation ID to its category, filtering out those not found
-        category_ids = [
-            segment_to_category[ann_id]
-            for ann_id in ann_id_list
-            if ann_id in segment_to_category
-        ]
-        category_id_lists.append(category_ids)
-
-    return category_id_lists
+    return [
+        [segment_to_category[aid] for aid in ann_ids if aid in segment_to_category]
+        for ann_ids in annotation_ids
+    ]

@@ -7,8 +7,10 @@ import zipfile
 from pathlib import Path
 
 import hydra
+import numpy as np
 from datasets import load_dataset
 from omegaconf import DictConfig
+from PIL import Image
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -143,6 +145,47 @@ def download_coco(data_cfg: DictConfig):
     logger.info("COCO dataset download and extraction complete")
 
 
+def preprocess_masks_to_npy(masks_dir: str | Path) -> None:
+    """Convert panoptic RGB PNGs to pre-decoded .npy int32 arrays.
+
+    Eliminates PNG decompression and RGB-to-ID arithmetic from the training
+    hot path.  Each ``.npy`` file stores a single ``(H, W)`` int32 array of
+    panoptic segment IDs.
+
+    The conversion is idempotent — if ``.npy`` files already exist alongside
+    the PNGs the function returns immediately.
+
+    Args:
+        masks_dir: Directory containing panoptic mask PNGs.
+    """
+    masks_dir = Path(masks_dir)
+    png_files = sorted(masks_dir.glob("*.png"))
+
+    if not png_files:
+        logger.warning(f"No PNG masks found in {masks_dir}")
+        return
+
+    # Skip if already converted (check first file)
+    if (masks_dir / f"{png_files[0].stem}.npy").exists():
+        logger.info(f"Masks already preprocessed in {masks_dir}")
+        return
+
+    logger.info(f"Converting {len(png_files)} masks to .npy ...")
+    for png_path in tqdm(png_files, desc="Converting masks"):
+        mask = np.array(Image.open(png_path))
+
+        if mask.ndim == 3 and mask.shape[2] == 3:
+            mask = (
+                mask[:, :, 0].astype(np.int32)
+                + mask[:, :, 1].astype(np.int32) * 256
+                + mask[:, :, 2].astype(np.int32) * 256**2
+            )
+
+        np.save(masks_dir / f"{png_path.stem}.npy", mask)
+
+    logger.info("Mask preprocessing complete.")
+
+
 def download_coconut(data_cfg: DictConfig):
     """Download COCONut dataset from HuggingFace.
 
@@ -163,6 +206,8 @@ def download_coconut(data_cfg: DictConfig):
         and len(list(output_captions_dir.glob("*.txt"))) > 0
     ):
         logger.info(f"COCONut dataset already exists at {data_cfg.data_dir}")
+        # Ensure masks are preprocessed even if dataset was already downloaded
+        preprocess_masks_to_npy(output_mask_dir)
         return
 
     dataset_name = f"xdeng77/{COCONUT_SPLIT}"
@@ -479,6 +524,9 @@ def download_coconut(data_cfg: DictConfig):
         logger.info("Captions extracted successfully!")
     else:
         logger.info(f"Captions already extracted at {output_captions_dir}")
+
+    # Convert mask PNGs to .npy for faster loading during training
+    preprocess_masks_to_npy(output_mask_dir)
 
 
 def download_png(data_cfg: DictConfig):

@@ -21,11 +21,11 @@ dataset:
 
 # Collator configuration
 collator:
-  _target_: finetune.data.coconut.collator.collate_fn
+  _target_: finetune.data.coconut.collator.make_collate_fn
   # processor will be passed at runtime via partial
 
 eval_collator:
-  _target_: finetune.data.coconut.collator.collate_fn
+  _target_: finetune.data.coconut.collator.make_collate_fn
   # processor will be passed at runtime via partial
 
 # COCONut-specific paths
@@ -35,3 +35,4 @@ coconut:
   ann_file: ${..annotations_dir}/panoptic_train2017.json
   captions_url: https://huggingface.co/datasets/xdeng77/coconut_pancap/resolve/main/caption_train2017.tar?download=true
   captions_tar_path: ${..data_dir}/caption_train2017.tar
+  broken_file: ${..data_dir}/broken.txt

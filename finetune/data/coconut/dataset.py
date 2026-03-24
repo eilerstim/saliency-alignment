@@ -1,10 +1,12 @@
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from omegaconf import DictConfig
 from PIL import Image
 from torch.utils.data import Dataset
@@ -18,17 +20,23 @@ class COCONutPanCapDataset(Dataset):
     Loads COCONut images with corresponding panoptic segmentation masks.
     COCONut provides high-quality panoptic annotations from the COCO dataset.
 
+    All captions and segment metadata are cached in memory at init time to
+    avoid per-sample filesystem I/O during training. Only images and masks
+    are loaded lazily in ``__getitem__``.
+
+    Masks are expected to be pre-decoded ``.npy`` files (int32 panoptic IDs).
+    Run ``preprocess_masks_to_npy`` from ``download.py`` to convert the raw
+    RGB PNGs once after downloading.
+
     Attributes:
         data_cfg: Data configuration containing paths and settings.
         split: Dataset split, either "train" or "validation".
         root_dir: Path to the directory containing images.
         mask_dir: Path to the directory containing panoptic masks.
         captions_dir: Path to the directory containing captions.
-        annotations: Dictionary containing parsed annotation data.
         images: List of image information dictionaries.
-        img_id_to_info: Mapping from image ID to image information.
-        annotations_list: List of annotation dictionaries with segments_info.
-        file_name_to_annotation: Mapping from mask file name to segments_info.
+        captions: Mapping from image ID to caption string.
+        id_to_segments: Mapping from image ID to list of (segment_id, category_id) tuples.
     """
 
     def __init__(
@@ -45,7 +53,7 @@ class COCONutPanCapDataset(Dataset):
         self.data_cfg = data_cfg
         self.split = split
 
-        # Build paths - COCONut uses train2017 images from COCO
+        # Build paths — COCONut uses train2017 images from COCO
         self.root_dir = Path(data_cfg.train.images_dir)
         self.mask_dir = Path(data_cfg.coconut.masks_dir)
         self.captions_dir = Path(data_cfg.coconut.captions_dir)
@@ -53,106 +61,110 @@ class COCONutPanCapDataset(Dataset):
         # Load panoptic annotations from JSON file
         ann_file = data_cfg.coconut.ann_file
         with open(ann_file) as f:
-            self.annotations = json.load(f)
+            annotations = json.load(f)
 
-        # Filter out images that do not have a corresponding caption file
-        self.images = []
-        for img in self.annotations["images"]:
-            caption_filename = f"{img['file_name'].split('.')[0]}.txt"
-            if (self.captions_dir / caption_filename).exists():
+        # Single listdir instead of one stat() per image on the network FS
+        available_captions = set(os.listdir(self.captions_dir))
+
+        # Load broken image IDs to exclude (optional config entry)
+        broken_ids: set[str] = set()
+        broken_file = getattr(data_cfg.coconut, "broken_file", None)
+        if broken_file is not None and Path(broken_file).exists():
+            with open(broken_file) as f:
+                broken_ids = {line.strip() for line in f if line.strip()}
+
+        # Filter images, cache captions in one pass
+        self.images: list[dict] = []
+        self.captions: dict[int, str] = {}
+        skipped_no_caption = 0
+        skipped_broken = 0
+
+        for img in annotations["images"]:
+            stem = img["file_name"].rsplit(".", 1)[0]
+
+            if stem in broken_ids:
+                skipped_broken += 1
+                continue
+
+            caption_filename = f"{stem}.txt"
+            if caption_filename in available_captions:
+                caption_path = self.captions_dir / caption_filename
+                with open(caption_path) as f:
+                    self.captions[img["id"]] = f.read().strip()
                 self.images.append(img)
             else:
-                logger.info(f"Skipping {img['file_name']}, no caption found.")
+                skipped_no_caption += 1
 
-        self.img_id_to_info = {img["id"]: img for img in self.images}
+        if skipped_no_caption or skipped_broken:
+            rank = dist.get_rank() if dist.is_initialized() else 0
+            if rank == 0:
+                logger.info(
+                    f"Skipped {skipped_no_caption} images with no caption, "
+                    f"{skipped_broken} images due to broken captions."
+                )
 
-        # Create mapping from file_name to annotation (segments_info)
-        self.annotations_list = self.annotations["annotations"]
-        self.file_name_to_annotation = {
-            ann["file_name"]: ann for ann in self.annotations_list
-        }
+        # Pre-extract segments_info keyed by image ID
+        self.id_to_segments: dict[int, list[tuple[int, int]]] = {}
+        for ann in annotations["annotations"]:
+            self.id_to_segments[ann["image_id"]] = [
+                (seg["id"], seg["category_id"]) for seg in ann["segments_info"]
+            ]
 
-        # Deterministic 90/10 split via index sampling with a fixed seed
+        # Free the full JSON — we've extracted everything we need
+        del annotations
+
+        # Deterministic 90/10 split with an isolated RNG (unaffected by global state)
         n_total = len(self.images)
         n_train = int(0.9 * n_total)
 
-        perm = torch.randperm(n_total).tolist()
-        train_idx = set(perm[:n_train])
+        g = torch.Generator().manual_seed(42)
+        perm = torch.randperm(n_total, generator=g).tolist()
 
         if split == "train":
-            self.images = [self.images[i] for i in range(n_total) if i in train_idx]
-        else:  # "validation"
-            self.images = [self.images[i] for i in range(n_total) if i not in train_idx]
+            self.images = [self.images[i] for i in perm[:n_train]]
+        else:
+            self.images = [self.images[i] for i in perm[n_train:]]
 
-    def __len__(self):
-        """Return the total number of images in the dataset.
+        # Trim caches to only images in this split
+        active_ids = {img["id"] for img in self.images}
+        self.captions = {k: v for k, v in self.captions.items() if k in active_ids}
+        self.id_to_segments = {
+            k: v for k, v in self.id_to_segments.items() if k in active_ids
+        }
 
-        Returns:
-            Number of images with available captions.
-        """
+    def __len__(self) -> int:
+        """Return the total number of images in the dataset."""
         return len(self.images)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict:
         """Load and return a single sample from the dataset.
 
-        Loads an image, its panoptic segmentation mask, associated captions, and segment info.
+        Images and masks are loaded lazily; captions and segment metadata
+        are served from the in-memory cache.
 
         Args:
             idx: Index of the sample to retrieve.
 
         Returns:
-            Tuple containing:
+            Dictionary containing:
                 - image: RGB PIL Image.
-                - mask: Long tensor of shape (H, W) with panoptic segmentation IDs.
-                - caption_text: Caption string for this image.
-                - segments_info: List of tuples (id, category_id) for each segment in the mask.
+                - mask: Long tensor of shape (H, W) with panoptic segment IDs.
+                - caption: Caption string for this image.
+                - segments_info: List of (segment_id, category_id) tuples.
         """
         img_info = self.images[idx]
-        image_path = self.root_dir / img_info["file_name"]
+        img_id = img_info["id"]
+        stem = img_info["file_name"].rsplit(".", 1)[0]
 
         # Load image
-        image = Image.open(image_path).convert("RGB")
+        image = Image.open(self.root_dir / img_info["file_name"]).convert("RGB")
 
-        # Load panoptic mask
-        # COCONut stores masks as PNG files with the same image ID
-        mask_filename = f"{img_info['file_name'].split('.')[0]}.png"
-        mask_path = self.mask_dir / mask_filename
-        mask = np.array(Image.open(mask_path))
+        # Load pre-decoded panoptic mask (.npy, int32 panoptic IDs)
+        mask = torch.from_numpy(np.load(self.mask_dir / f"{stem}.npy")).long()
 
-        # COCO panoptic masks are stored as RGB images where
-        # id = R + G * 256 + B * 256^2
-        if len(mask.shape) == 3 and mask.shape[2] == 3:
-            mask = (
-                mask[:, :, 0].astype(np.int32)
-                + mask[:, :, 1].astype(np.int32) * 256
-                + mask[:, :, 2].astype(np.int32) * 256 * 256
-            )
-
-        mask = torch.from_numpy(mask).long()
-
-        # Load captions from TXT file
-        caption_filename = f"{img_info['file_name'].split('.')[0]}.txt"
-        caption_path = self.captions_dir / caption_filename
-
-        with open(caption_path) as f:
-            caption_text = f.read().strip()
-
-        # Get segments_info for this image
-        # The annotation file_name includes .png extension for panoptic masks
-        annotation_key = mask_filename
-        annotation = self.file_name_to_annotation.get(annotation_key, {})
-
-        # Extract (id, category_id) tuples from segments_info
-        segments_info = []
-        if "segments_info" in annotation:
-            segments_info = [
-                (seg["id"], seg["category_id"]) for seg in annotation["segments_info"]
-            ]
-
-        # Return a dict for clarity
         return {
             "image": image,
             "mask": mask,
-            "caption": caption_text,
-            "segments_info": segments_info,
+            "caption": self.captions[img_id],
+            "segments_info": self.id_to_segments.get(img_id, []),
         }
