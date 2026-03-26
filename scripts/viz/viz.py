@@ -74,7 +74,7 @@ for model_type, model_path in models_to_run:
         )
 
         try:
-            fig = sal.plot(regex(word), alpha=0.83, cmap="inferno", title=f"Saliency Map for `{word}` ({model_type})")
+            fig = sal.plot(regex(word), alpha=0.8, cmap="inferno", title=f"Saliency Map for `{word}` ({model_type})")
             url_slug = re.sub(r"^https?://(www\.)?", "", image_url)[:10]
             url_slug = re.sub(r"[^a-zA-Z0-9]", "_", url_slug)
             fig.savefig(f"{args.output_dir}/map_{model_type}_{word}_{url_slug}.png")
