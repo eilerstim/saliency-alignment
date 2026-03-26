@@ -26,7 +26,7 @@ RUN git clone https://github.com/EvolvingLMMs-Lab/lmms-eval.git \
     && uv pip install . --exclude exclude.txt --system
 
 # Install working decord library
-RUN uv pip install decord2 --system
+RUN uv pip install decord2 spacy --system
 
 # Caches inside mounted directory
 ENV HF_HOME="${PROJECT_DIR}/.hf"
