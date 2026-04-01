@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=infra01
+#SBATCH --account=aa013 
 #SBATCH --job-name=saliency
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err

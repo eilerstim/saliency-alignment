@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=a163
+#SBATCH --account=aa013 
 #SBATCH --job-name=submit_single
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
