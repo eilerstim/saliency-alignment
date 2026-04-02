@@ -3,7 +3,7 @@
 #SBATCH --job-name=saliency-count
 #SBATCH --output=logs/%x_%A_%a.out
 #SBATCH --error=logs/%x_%A_%a.err
-#SBATCH --time=12:00:00
+#SBATCH --time=2:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
@@ -40,7 +40,7 @@ $COUNT_DIR/.count_venv/bin/python -m evaluator \
     ++output_dir=$OUTPUT_DIR \
     ++model.engine=vllm_generate \
     ++model.model=$MODEL_PATH \
-    ++model.vllm_params.tensor_parallel_size=4 \
+    ++model.vllm_params.tensor_parallel_size=1 \
     ++model.vllm_params.dtype=bfloat16 \
     ++model.vllm_params.trust_remote_code=true \
     ++model.vllm_params.tokenizer=llava-hf/llava-1.5-7b-hf \
