@@ -12,4 +12,4 @@ class ZeroCriterion(Criterion):
         attn: Float[torch.Tensor, "S H W"],
         mask: Bool[torch.Tensor, "S H W"],
     ) -> Float[torch.Tensor, "1"]:
-        return torch.tensor(0.0, device=attn.device)
+        return attn.sum() * 0.0
