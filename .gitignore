@@ -44,3 +44,6 @@ core_nid*
 
 # Figures
 figs/
+
+# Results
+results/
