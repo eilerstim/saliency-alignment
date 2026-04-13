@@ -68,4 +68,5 @@ def finetune(cfg: DictConfig):
         save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
         model.save_pretrained(save_dir, state_dict=state)
         processor.save_pretrained(save_dir)
+        processor.tokenizer.save_pretrained(save_dir)  # fix tokenizer_class
         logger.info(f"Model weights saved to {save_dir}")
