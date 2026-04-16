@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -8,6 +9,7 @@ from hydra.core.hydra_config import HydraConfig
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
+from pathlib import Path
 
 from vl_saliency import Saliency
 
@@ -68,5 +70,11 @@ def finetune(cfg: DictConfig):
         save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
         model.save_pretrained(save_dir, state_dict=state)
         processor.save_pretrained(save_dir)
-        processor.tokenizer.save_pretrained(save_dir)  # fix tokenizer_class
+
+        # Fix tokenizer_class for vLLM compatibility
+        tok_config_path = Path(save_dir) / "tokenizer_config.json"
+        tok_config = json.loads(tok_config_path.read_text())
+        tok_config["tokenizer_class"] = "LlamaTokenizer"
+        tok_config_path.write_text(json.dumps(tok_config, indent=2))
+
         logger.info(f"Model weights saved to {save_dir}")
