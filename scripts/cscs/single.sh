@@ -19,8 +19,9 @@ BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
 CRITERION="default"
 LAMBDA=0.0
+RUN_ID_SUFFIX=""
 
-RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}"
+RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}${RUN_ID_SUFFIX:+_${RUN_ID_SUFFIX}}"
 
 echo "Submitting jobs for ${RUN_ID} at $(date)"
 
