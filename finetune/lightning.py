@@ -36,6 +36,9 @@ class FineTuner(L.LightningModule):
         # Per-image alignment scores accumulated within the current val epoch.
         # Keys are metric names from ``ALIGNMENT_METRICS``; values are lists of
         # per-image floats (one entry per batch item that contains grounded tokens).
+        # Only populated when ``compute_alignment_metrics`` is True; the trainer
+        # flips the flag once before the final post-fit validation pass.
+        self.compute_alignment_metrics: bool = False
         self._val_alignment_scores: dict[str, list[float]] = defaultdict(list)
 
     def forward(self, **batch):
@@ -120,17 +123,23 @@ class FineTuner(L.LightningModule):
             batch_size=batch["input_ids"].size(0),
         )
 
-        # Per-image attention alignment metrics (cheap; reuses outputs.saliency)
-        per_image = self._per_image_alignment_metrics(
-            saliency=outputs.saliency,
-            masks=batch["masks"],
-            segment_ids=batch["segment_ids"],
-            labels=batch["labels"],
-        )
-        for name, scores in per_image.items():
-            self._val_alignment_scores[name].extend(scores)
+        # Per-image attention alignment metrics — only run on the final
+        # post-training validation pass (the mid-training val passes only
+        # cover ``limit_val_batches`` of the data and are not a fair snapshot).
+        if self.compute_alignment_metrics:
+            per_image = self._per_image_alignment_metrics(
+                saliency=outputs.saliency,
+                masks=batch["masks"],
+                segment_ids=batch["segment_ids"],
+                labels=batch["labels"],
+            )
+            for name, scores in per_image.items():
+                self._val_alignment_scores[name].extend(scores)
 
     def on_validation_epoch_end(self) -> None:
+        if not self.compute_alignment_metrics:
+            return
+
         # Gather variable-length per-rank lists
         local_scores = {k: list(v) for k, v in self._val_alignment_scores.items()}
 

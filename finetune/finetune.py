@@ -64,6 +64,7 @@ def finetune(cfg: DictConfig):
     with Saliency(model, backend="torch_eager"):
         trainer.fit(fine_tuner)
 
+        fine_tuner.compute_alignment_metrics = True
         trainer.limit_val_batches = 1.0
         trainer.validate(fine_tuner)
 
