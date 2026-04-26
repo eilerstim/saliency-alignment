@@ -58,9 +58,14 @@ def finetune(cfg: DictConfig):
         **cfg.trainer,
     )
 
-    # Fine-tuning
+    # Fine-tuning, followed by a full-validation pass that evaluates the
+    # attention alignment metrics on the complete validation set. The
+    # alignment metrics summary table is logged from FineTuner.on_validation_epoch_end.
     with Saliency(model, backend="torch_eager"):
         trainer.fit(fine_tuner)
+
+        trainer.limit_val_batches = 1.0
+        trainer.validate(fine_tuner)
 
     # Gather and save model state dict on rank 0
     state = load_lt_state(cfg.strategy, trainer, model)
