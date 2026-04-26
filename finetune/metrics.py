@@ -6,11 +6,12 @@ same device as the inputs. ``NaN`` is returned when the metric is
 undefined (empty mask, zero-mass saliency, constant saliency).
 
 Aggregation:
-    Per-token tensor list -> per-image score: mean across tokens, ignoring NaNs.
+    Per-token list -> per-image score: mean across tokens (NaNs ignored).
     Per-image list -> per-model score: mean and median across images.
 
 The functions are torch-native to avoid CPU<->GPU transfers in the
-training/validation loop.
+validation loop and assume float-typed saliency input (cast once at the
+call site).
 """
 
 from __future__ import annotations
@@ -22,8 +23,8 @@ from jaxtyping import Bool, Float
 from torch import Tensor
 
 
-def _nan_like(reference: Tensor) -> Tensor:
-    return torch.tensor(float("nan"), device=reference.device, dtype=torch.float32)
+def _nan(device: torch.device) -> Tensor:
+    return torch.tensor(float("nan"), device=device)
 
 
 def coverage(
@@ -31,14 +32,12 @@ def coverage(
 ) -> Float[Tensor, ""]:
     """Fraction of total saliency mass falling inside ``mask``.
 
-    ``coverage = sum_{(i,j) in mask} sal_{i,j} / sum_{(i,j)} sal_{i,j}``
-
-    Returns NaN when total saliency is non-positive.
+    ``coverage = sum(sal[mask]) / sum(sal)``. Returns NaN when total
+    saliency is non-positive.
     """
-    sal = sal.float()
     total = sal.sum()
     if total <= 0:
-        return _nan_like(sal)
+        return _nan(sal.device)
     return sal[mask].sum() / total
 
 
@@ -52,13 +51,10 @@ def amr_normalised(
     1.0 = uniform attention (chance level)
     > 1.0 = attention preferentially concentrated inside mask
     < 1.0 = attention preferentially outside mask
-
-    Returns NaN when the mask is empty or saliency has no mass.
     """
-    sal = sal.float()
     chance = mask.float().mean()
     if chance == 0:
-        return _nan_like(sal)
+        return _nan(sal.device)
     return coverage(sal, mask) / chance
 
 
@@ -68,22 +64,19 @@ def average_precision(
     """Average precision treating saliency as a pixel-level ranker.
 
     Equivalent to ``sklearn.metrics.average_precision_score``: the mean
-    precision evaluated at each positive's rank position. Stable sort
-    is used so ties are resolved deterministically.
-
-    Returns NaN when there are no positives.
+    precision at each positive's rank. Stable sort gives deterministic
+    tie-breaking.
     """
-    s = scores.float().flatten()
+    s = scores.flatten()
     y = y_true.flatten().to(s.dtype)
     n_pos = y.sum()
     if n_pos == 0:
-        return _nan_like(s)
+        return _nan(s.device)
     order = torch.argsort(s, descending=True, stable=True)
     y_sorted = y[order]
     cum_tp = torch.cumsum(y_sorted, dim=0)
     ranks = torch.arange(1, y_sorted.numel() + 1, device=s.device, dtype=s.dtype)
-    prec = cum_tp / ranks
-    return (prec * y_sorted).sum() / n_pos
+    return (cum_tp / ranks * y_sorted).sum() / n_pos
 
 
 def nss(
@@ -92,18 +85,14 @@ def nss(
     """Normalised Scanpath Saliency at fixation locations.
 
     Z-normalises ``sal`` to mean=0, std=1 and returns the mean over pixels
-    where ``mask`` is True. Invariant to monotonic affine scaling.
-
-    Returns NaN when the mask is empty or the saliency is constant.
+    where ``mask`` is True. Returns NaN for an empty mask or constant saliency.
     """
-    sal = sal.float()
     if not mask.any():
-        return _nan_like(sal)
+        return _nan(sal.device)
     std = sal.std(unbiased=False)
     if std == 0:
-        return _nan_like(sal)
-    z = (sal - sal.mean()) / std
-    return z[mask].mean()
+        return _nan(sal.device)
+    return ((sal - sal.mean()) / std)[mask].mean()
 
 
 MetricFn = Callable[

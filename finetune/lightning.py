@@ -19,6 +19,30 @@ from .metrics import ALIGNMENT_METRICS
 logger = logging.getLogger(__name__)
 
 
+def _render_alignment_table(summary: dict[str, dict[str, float]]) -> str:
+    """Format a per-metric summary as a fixed-width markdown-ish table."""
+    header = ("Metric", "Mean", "Median", "N images")
+    rows: list[tuple[str, ...]] = [header]
+    for name in ALIGNMENT_METRICS:
+        stats = summary.get(name)
+        if stats is None:
+            rows.append((name, "—", "—", "0"))
+        else:
+            rows.append(
+                (name, f"{stats['mean']:.4f}", f"{stats['median']:.4f}", f"{int(stats['n'])}")
+            )
+
+    widths = [max(len(r[c]) for r in rows) for c in range(len(header))]
+    sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    lines = [sep]
+    for i, row in enumerate(rows):
+        lines.append("| " + " | ".join(c.ljust(w) for c, w in zip(row, widths)) + " |")
+        if i == 0:
+            lines.append(sep)
+    lines.append(sep)
+    return "\n".join(lines)
+
+
 class FineTuner(L.LightningModule):
     """Fine-tuning module for a pre-trained model."""
 
@@ -140,76 +164,59 @@ class FineTuner(L.LightningModule):
         if not self.compute_alignment_metrics:
             return
 
-        # Gather variable-length per-rank lists
-        local_scores = {k: list(v) for k, v in self._val_alignment_scores.items()}
-
-        if self.trainer.world_size > 1 and dist.is_available() and dist.is_initialized():
-            gathered: list[dict[str, list[float]] | None] = [
-                None
-            ] * self.trainer.world_size
-            dist.all_gather_object(gathered, local_scores)
-        else:
-            gathered = [local_scores]
-
-        merged: dict[str, list[float]] = defaultdict(list)
-        for d in gathered:
-            if not d:
-                continue
-            for name, scores in d.items():
-                merged[name].extend(scores)
-
+        merged = self._gather_alignment_scores()
         if not any(merged.values()):
             return
 
-        aggregated: dict[str, float] = {}
-        for name in ALIGNMENT_METRICS:
-            scores = merged.get(name, [])
+        # Compute per-metric summary once and reuse for both lightning logging
+        # and the human-readable table.
+        summary: dict[str, dict[str, float]] = {}
+        for name, scores in merged.items():
             if not scores:
                 continue
             arr = torch.tensor(scores, dtype=torch.float64)
-            aggregated[f"val/{name}_mean"] = float(arr.mean())
-            aggregated[f"val/{name}_median"] = float(arr.median())
+            summary[name] = {
+                "mean": arr.mean().item(),
+                "median": arr.median().item(),
+                "n": float(len(scores)),
+            }
 
-        # Already gathered manually -> log without further sync.
-        self.log_dict(aggregated, sync_dist=False, rank_zero_only=True)
+        self.log_dict(
+            {
+                f"val/{name}_{stat}": v
+                for name, stats in summary.items()
+                for stat, v in stats.items()
+                if stat != "n"
+            },
+            sync_dist=False,
+            rank_zero_only=True,
+        )
 
         if self.trainer.is_global_zero:
-            self._log_alignment_table(merged)
+            logger.info(
+                "Validation attention alignment metrics:\n%s",
+                _render_alignment_table(summary),
+            )
 
-    @staticmethod
-    def _log_alignment_table(scores: dict[str, list[float]]) -> None:
-        """Render a per-model summary table to the standard logger."""
-        header = ("Metric", "Mean", "Median", "N images")
-        rows: list[tuple[str, str, str, str]] = [header]
-        for name in ALIGNMENT_METRICS:
-            values = scores.get(name, [])
-            if not values:
-                rows.append((name, "—", "—", "0"))
+    def _gather_alignment_scores(self) -> dict[str, list[float]]:
+        """All-gather variable-length per-rank score lists into one dict."""
+        local = {k: list(v) for k, v in self._val_alignment_scores.items()}
+
+        if self.trainer.world_size <= 1 or not (
+            dist.is_available() and dist.is_initialized()
+        ):
+            return local
+
+        gathered: list[dict[str, list[float]] | None] = [None] * self.trainer.world_size
+        dist.all_gather_object(gathered, local)
+
+        merged: dict[str, list[float]] = defaultdict(list)
+        for d in gathered:
+            if d is None:
                 continue
-            arr = torch.tensor(values, dtype=torch.float64)
-            rows.append(
-                (
-                    name,
-                    f"{arr.mean().item():.4f}",
-                    f"{arr.median().item():.4f}",
-                    str(len(values)),
-                )
-            )
-
-        widths = [max(len(r[c]) for r in rows) for c in range(len(header))]
-        sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
-        body: list[str] = [sep]
-        for i, row in enumerate(rows):
-            body.append(
-                "| "
-                + " | ".join(cell.ljust(w) for cell, w in zip(row, widths))
-                + " |"
-            )
-            if i == 0:
-                body.append(sep)
-        body.append(sep)
-
-        logger.info("Validation attention alignment metrics:\n%s", "\n".join(body))
+            for name, scores in d.items():
+                merged[name].extend(scores)
+        return merged
 
     @torch.no_grad()
     def _per_image_alignment_metrics(
@@ -221,11 +228,10 @@ class FineTuner(L.LightningModule):
     ) -> dict[str, list[float]]:
         """Compute per-image alignment scores by averaging per-token metrics.
 
-        For each batch item, takes attention maps of tokens with at least one
-        ground-truth segment, upsamples them to the annotation resolution, and
-        builds a per-token boolean mask over the panoptic ids referenced by
-        that token. Per-token metric values are aggregated to a single per-image
-        score (mean, ignoring NaNs from undefined cases).
+        For each batch item, gathers attention maps of tokens with at least
+        one ground-truth segment, upsamples them to annotation resolution,
+        and aggregates per-token metric values into one per-image score
+        (mean over tokens, ignoring NaNs from undefined cases).
         """
         per_image: dict[str, list[float]] = {name: [] for name in ALIGNMENT_METRICS}
 
@@ -239,7 +245,6 @@ class FineTuner(L.LightningModule):
             gen_len = seg_ids.shape[0]
             attn = attn[-gen_len:]
 
-            # Filter to tokens that actually reference a segment
             has_segments = (seg_ids != -1).any(dim=1)
             if not has_segments.any():
                 continue
@@ -247,13 +252,13 @@ class FineTuner(L.LightningModule):
             seg_ids = seg_ids[has_segments]
             attn = attn[has_segments]
 
-            # Upsample raw attention to annotation resolution (no softmax: AMR
-            # depends on the unnormalised mass distribution; AP / NSS are
-            # invariant under monotonic / affine rescaling).
+            # Upsample raw attention to annotation resolution. No softmax:
+            # AMR depends on the unnormalised mass distribution; AP and NSS
+            # are invariant under monotonic / affine rescaling.
             attn_up = (
                 F.interpolate(
                     attn.unsqueeze(1).float(),
-                    size=tuple(mask_seg.shape),
+                    size=mask_seg.shape,
                     mode="bilinear",
                     align_corners=False,
                 )
@@ -261,20 +266,19 @@ class FineTuner(L.LightningModule):
                 .detach()
             )
 
-            # Per-token boolean masks over annotation pixels
-            valid_seg = seg_ids != -1
-            seg_mask = (mask_seg[None, None] == seg_ids[:, :, None, None]) & valid_seg[
-                :, :, None, None
-            ]
-            token_mask = seg_mask.any(dim=1)  # (n_tokens, H, W)
+            # Build the per-token boolean mask just-in-time via ``torch.isin``
+            # (avoids the full ``(T, max_segments, H, W)`` intermediate).
+            token_scores: dict[str, list[Tensor]] = {n: [] for n in ALIGNMENT_METRICS}
+            for t in range(attn_up.shape[0]):
+                valid_ids = seg_ids[t][seg_ids[t] != -1]
+                tmask = torch.isin(mask_seg, valid_ids)
+                for name, fn in ALIGNMENT_METRICS.items():
+                    token_scores[name].append(fn(attn_up[t], tmask))
 
-            for name, fn in ALIGNMENT_METRICS.items():
-                token_vals = torch.stack(
-                    [fn(attn_up[t], token_mask[t]) for t in range(attn_up.shape[0])]
-                )
-                valid = ~torch.isnan(token_vals)
-                if valid.any():
-                    per_image[name].append(float(token_vals[valid].mean()))
+            for name, vals in token_scores.items():
+                mean_val = torch.nanmean(torch.stack(vals))
+                if not torch.isnan(mean_val):
+                    per_image[name].append(float(mean_val))
 
         return per_image
 
