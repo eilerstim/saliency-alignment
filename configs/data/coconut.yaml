@@ -36,3 +36,11 @@ coconut:
   captions_url: https://huggingface.co/datasets/xdeng77/coconut_pancap/resolve/main/caption_train2017.tar?download=true
   captions_tar_path: ${..data_dir}/caption_train2017.tar
   broken_file: ${..data_dir}/broken.txt
+
+  # Deterministic split: first ``n_train`` images by image id go to train,
+  # the next ``n_val`` images to validation. The same split is used for the
+  # training pipeline and for the post-training saliency evaluation script,
+  # so reported metrics are computed on images the model has never seen.
+  split:
+    n_train: 108000
+    n_val: 10000

@@ -1,0 +1,25 @@
+# Hydra config for ``python -m finetune.saliency_eval``.
+#
+# The defaults below mirror ``config.yaml`` for the components that
+# affect what gets evaluated (model dtype, dataset paths, dataloader
+# kwargs). Loss / optimiser / scheduler / strategy are not used.
+defaults:
+  - model: llava-1.5-7b
+  - data: coconut
+  - dataloader
+  - _self_
+
+seed: 42
+
+# Resolved by ``finetune.saliency_eval._resolve_model_path``: an explicit
+# ``model_path=...`` override wins, otherwise we fall back to the same
+# location ``finetune/finetune.py`` saves to.
+checkpoint_dir: models
+run_id: ${oc.env:SLURM_JOB_NAME,saliency-eval}_${oc.env:MODEL,llava-1.5-7b}_${oc.env:CRITERION,kl}_w${oc.env:LAMBDA,0.5}_${oc.env:SLURM_JOB_ID,local}
+model_path: null
+
+hydra:
+  run:
+    dir: outputs/eval/${run_id}
+  sweep:
+    dir: outputs/eval/${run_id}
