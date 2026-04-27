@@ -1,13 +1,20 @@
 """Stand-alone entry point for saliency-alignment evaluation.
 
+Reuses the training Hydra config (``configs/config.yaml``) so the
+checkpoint location, model dtype, dataset paths and dataloader kwargs
+all stay defined in a single place. Set the same ``SLURM_JOB_NAME`` /
+``MODEL`` / ``CRITERION`` / ``LAMBDA`` / ``SLURM_JOB_ID`` environment
+variables the launch script uses for training and ``run_id`` will
+resolve to the same checkpoint directory.
+
 Usage:
 
-    uv run -m finetune.saliency_eval model_path=models/<run_id>
+    uv run -m finetune.saliency_eval                    # uses ${run_id}
+    uv run -m finetune.saliency_eval model_path=...     # explicit override
 
-The script loads a model previously saved by ``finetune/finetune.py``,
-runs inference on the deterministic validation slice (``n_val`` images
-following the first ``n_train`` training images), and prints a table of
-per-model AMR / AP / NSS scores.
+The script loads the saved model, runs inference on the deterministic
+validation slice (``[n_train:]`` of the COCONut images sorted by id)
+and prints a table of per-model AMR / AP / NSS scores.
 """
 
 from __future__ import annotations
@@ -29,16 +36,16 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_model_path(cfg: DictConfig) -> str:
-    """Allow either an explicit ``model_path=...`` override or fall back
-    to ``${checkpoint_dir}/${run_id}`` (the default training output)."""
-    if getattr(cfg, "model_path", None):
-        return str(cfg.model_path)
+    """Allow ``model_path=...`` to override the default checkpoint
+    location, otherwise fall back to ``${checkpoint_dir}/${run_id}``
+    (where ``finetune/finetune.py`` saves)."""
+    model_path = cfg.get("model_path", None)
+    if model_path:
+        return str(model_path)
     return f"{cfg.checkpoint_dir}/{cfg.run_id}"
 
 
-@hydra.main(
-    version_base="1.3", config_path="../configs", config_name="saliency_eval"
-)
+@hydra.main(version_base="1.3", config_path="../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     L.seed_everything(cfg.seed)
     torch.set_float32_matmul_precision("high")
