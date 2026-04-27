@@ -113,13 +113,9 @@ class COCONutPanCapDataset(Dataset):
         # Free the full JSON — we've extracted everything we need
         del annotations
 
-        # Deterministic prefix/suffix split:
-        #   - first ``n_train`` images (sorted by image id) → train
-        #   - everything after that                          → validation
-        # Sorting by image id makes the order independent of JSON insertion
-        # order so the split is reproducible across runs and machines.
-        self.images.sort(key=lambda img: img["id"])
-
+        # Deterministic prefix/suffix split: the first ``n_train`` images go
+        # to train, the rest to validation. The COCONut JSON lists images in
+        # id order so the slice is stable without an explicit sort.
         n_train = int(data_cfg.coconut.split.n_train)
         n_total = len(self.images)
 
