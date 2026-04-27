@@ -115,26 +115,24 @@ class COCONutPanCapDataset(Dataset):
 
         # Deterministic prefix/suffix split:
         #   - first ``n_train`` images (sorted by image id) → train
-        #   - next  ``n_val``  images                       → validation
+        #   - everything after that                          → validation
         # Sorting by image id makes the order independent of JSON insertion
         # order so the split is reproducible across runs and machines.
         self.images.sort(key=lambda img: img["id"])
 
-        split_cfg = data_cfg.coconut.split
-        n_train = int(split_cfg.n_train)
-        n_val = int(split_cfg.n_val)
+        n_train = int(data_cfg.coconut.split.n_train)
         n_total = len(self.images)
 
-        if n_train + n_val > n_total:
+        if n_train >= n_total:
             raise ValueError(
-                f"Requested split sizes (train={n_train}, val={n_val}) exceed "
-                f"the number of available COCONut images ({n_total})."
+                f"n_train={n_train} leaves no images for validation "
+                f"(only {n_total} COCONut images available)."
             )
 
         if split == "train":
             self.images = self.images[:n_train]
         else:
-            self.images = self.images[n_train : n_train + n_val]
+            self.images = self.images[n_train:]
 
         # Trim caches to only images in this split
         active_ids = {img["id"] for img in self.images}
