@@ -14,33 +14,9 @@ from transformers import PreTrainedModel, ProcessorMixin
 from vl_saliency.maps import SaliencyGrid
 
 from .criterion import Criterion
-from .metrics import ALIGNMENT_METRICS
+from .metrics import ALIGNMENT_METRICS, format_alignment_table, summarize_alignment
 
 logger = logging.getLogger(__name__)
-
-
-def _render_alignment_table(summary: dict[str, dict[str, float]]) -> str:
-    """Format a per-metric summary as a fixed-width markdown-ish table."""
-    header = ("Metric", "Mean", "Median", "N images")
-    rows: list[tuple[str, ...]] = [header]
-    for name in ALIGNMENT_METRICS:
-        stats = summary.get(name)
-        if stats is None:
-            rows.append((name, "—", "—", "0"))
-        else:
-            rows.append(
-                (name, f"{stats['mean']:.4f}", f"{stats['median']:.4f}", f"{int(stats['n'])}")
-            )
-
-    widths = [max(len(r[c]) for r in rows) for c in range(len(header))]
-    sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
-    lines = [sep]
-    for i, row in enumerate(rows):
-        lines.append("| " + " | ".join(c.ljust(w) for c, w in zip(row, widths)) + " |")
-        if i == 0:
-            lines.append(sep)
-    lines.append(sep)
-    return "\n".join(lines)
 
 
 class FineTuner(L.LightningModule):
@@ -165,21 +141,9 @@ class FineTuner(L.LightningModule):
             return
 
         merged = self._gather_alignment_scores()
-        if not any(merged.values()):
+        summary = summarize_alignment(merged)
+        if not summary:
             return
-
-        # Compute per-metric summary once and reuse for both lightning logging
-        # and the human-readable table.
-        summary: dict[str, dict[str, float]] = {}
-        for name, scores in merged.items():
-            if not scores:
-                continue
-            arr = torch.tensor(scores, dtype=torch.float64)
-            summary[name] = {
-                "mean": arr.mean().item(),
-                "median": arr.median().item(),
-                "n": float(len(scores)),
-            }
 
         self.log_dict(
             {
@@ -195,7 +159,7 @@ class FineTuner(L.LightningModule):
         if self.trainer.is_global_zero:
             logger.info(
                 "Validation attention alignment metrics:\n%s",
-                _render_alignment_table(summary),
+                format_alignment_table(summary),
             )
 
     def _gather_alignment_scores(self) -> dict[str, list[float]]:
@@ -230,8 +194,8 @@ class FineTuner(L.LightningModule):
 
         For each batch item, gathers attention maps of tokens with at least
         one ground-truth segment, upsamples them to annotation resolution,
-        and aggregates per-token metric values into one per-image score
-        (mean over tokens, ignoring NaNs from undefined cases).
+        and runs each metric in a single batched call over the ``(T, H, W)``
+        token stack. Per-image score = NaN-ignoring mean across tokens.
         """
         per_image: dict[str, list[float]] = {name: [] for name in ALIGNMENT_METRICS}
 
@@ -266,17 +230,18 @@ class FineTuner(L.LightningModule):
                 .detach()
             )
 
-            # Build the per-token boolean mask just-in-time via ``torch.isin``
-            # (avoids the full ``(T, max_segments, H, W)`` intermediate).
-            token_scores: dict[str, list[Tensor]] = {n: [] for n in ALIGNMENT_METRICS}
-            for t in range(attn_up.shape[0]):
-                valid_ids = seg_ids[t][seg_ids[t] != -1]
-                tmask = torch.isin(mask_seg, valid_ids)
-                for name, fn in ALIGNMENT_METRICS.items():
-                    token_scores[name].append(fn(attn_up[t], tmask))
+            # Build per-token boolean masks ``(T, H, W)`` in one shot.
+            valid = seg_ids != -1
+            token_mask = (
+                (mask_seg[None, None] == seg_ids[:, :, None, None])
+                & valid[:, :, None, None]
+            ).any(dim=1)
 
-            for name, vals in token_scores.items():
-                mean_val = torch.nanmean(torch.stack(vals))
+            # One batched call per metric instead of T × calls; AP's argsort
+            # is the dominant cost and benefits most from this.
+            for name, fn in ALIGNMENT_METRICS.items():
+                token_vals = fn(attn_up, token_mask)
+                mean_val = torch.nanmean(token_vals)
                 if not torch.isnan(mean_val):
                     per_image[name].append(float(mean_val))
 
