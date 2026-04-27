@@ -17,9 +17,9 @@ export EVAL_ONLY=${EVAL_ONLY:-false}
 MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
-CRITERION="default"
-LAMBDA=0.0
-RUN_ID_SUFFIX=""
+CRITERION="kl"
+LAMBDA=0.5
+RUN_ID_SUFFIX="lm_only"
 
 RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}${RUN_ID_SUFFIX:+_${RUN_ID_SUFFIX}}"
 
@@ -38,11 +38,11 @@ TRAIN_JOBID=$(sbatch --parsable \
     scripts/cscs/arr_train.sh \
     "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE")
 
-# ---- Submit evaluation job dependent on training ----
-sbatch --dependency=afterok:${TRAIN_JOBID} \
-    scripts/cscs/arr_eval.sh "$RUN_ID"
+# # ---- Submit evaluation job dependent on training ----
+# sbatch --dependency=afterok:${TRAIN_JOBID} \
+#     scripts/cscs/arr_eval.sh "$RUN_ID"
 
-sbatch --dependency=afterok:${TRAIN_JOBID} \
-    scripts/cscs/count/eval.sh "$RUN_ID" "false"
+# sbatch --dependency=afterok:${TRAIN_JOBID} \
+#     scripts/cscs/count/eval.sh "$RUN_ID" "false"
 
-echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"
+# echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"
