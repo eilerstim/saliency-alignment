@@ -33,12 +33,9 @@ class FineTuner(L.LightningModule):
         # Instantiate auxiliary loss function
         self.auxiliary_loss: Criterion = instantiate(self.cfg.loss)
 
-        # Per-image alignment scores accumulated within the current val epoch.
+        # Per-image alignment scores accumulated within ``run_alignment_eval``.
         # Keys are metric names from ``ALIGNMENT_METRICS``; values are lists of
         # per-image floats (one entry per batch item that contains grounded tokens).
-        # Only populated when ``compute_alignment_metrics`` is True; the trainer
-        # flips the flag once before the final post-fit validation pass.
-        self.compute_alignment_metrics: bool = False
         self._val_alignment_scores: dict[str, list[float]] = defaultdict(list)
 
     def forward(self, **batch):
@@ -72,18 +69,6 @@ class FineTuner(L.LightningModule):
         )
 
         return loss + auxiliary_loss
-
-    def on_validation_epoch_start(self) -> None:
-        self._val_alignment_scores = defaultdict(list)
-        if self.compute_alignment_metrics and self.trainer.is_global_zero:
-            try:
-                n_images = len(self.trainer.val_dataloaders.dataset)
-                logger.info(
-                    "Starting full-validation alignment metrics pass over %d images.",
-                    n_images,
-                )
-            except (AttributeError, TypeError):
-                logger.info("Starting full-validation alignment metrics pass.")
 
     def validation_step(self, batch: dict, batch_idx: int):
         # Forward pass with saliency accumulation
@@ -132,10 +117,35 @@ class FineTuner(L.LightningModule):
             batch_size=batch["input_ids"].size(0),
         )
 
-        # Per-image attention alignment metrics — only run on the final
-        # post-training validation pass (the mid-training val passes only
-        # cover ``limit_val_batches`` of the data and are not a fair snapshot).
-        if self.compute_alignment_metrics:
+    @torch.no_grad()
+    def run_alignment_eval(self) -> None:
+        """Run a full-validation pass dedicated to attention alignment metrics.
+
+        We deliberately bypass ``trainer.validate(...)`` here. Re-entering an
+        FSDP-wrapped model with ``use_orig_params=True`` after ``trainer.fit``
+        has returned can leave inner units in their sharded state, which
+        surfaces as a ``[0]``-shape ``pre_layrnorm.weight`` inside the CLIP
+        vision tower the moment the saliency-patched forward fires.
+
+        Driving the loop ourselves inside the active ``Saliency`` context
+        keeps the FSDP forward-hook chain that already worked during fit.
+        """
+        if self.trainer.is_global_zero:
+            logger.info("Starting full-validation alignment metrics pass.")
+
+        self._val_alignment_scores = defaultdict(list)
+        self.eval()
+
+        # ``trainer.val_dataloaders`` is populated and DistSampler-wrapped by
+        # Lightning's val phase during fit; fall back to wrapping fresh if
+        # something cleared it.
+        val_loader = self.trainer.val_dataloaders or self.trainer.strategy.process_dataloader(
+            self.val_dataloader()
+        )
+
+        for batch in val_loader:
+            batch = self.transfer_batch_to_device(batch, self.device, dataloader_idx=0)
+            outputs = self(**batch)
             per_image = self._per_image_alignment_metrics(
                 saliency=outputs.saliency,
                 masks=batch["masks"],
@@ -145,31 +155,15 @@ class FineTuner(L.LightningModule):
             for name, scores in per_image.items():
                 self._val_alignment_scores[name].extend(scores)
 
-    def on_validation_epoch_end(self) -> None:
-        if not self.compute_alignment_metrics:
-            return
-
         merged = self._gather_alignment_scores()
         summary = summarize_alignment(merged)
-        if not summary:
+        if not summary or not self.trainer.is_global_zero:
             return
 
-        self.log_dict(
-            {
-                f"val/{name}_{stat}": v
-                for name, stats in summary.items()
-                for stat, v in stats.items()
-                if stat != "n"
-            },
-            sync_dist=False,
-            rank_zero_only=True,
+        logger.info(
+            "Validation attention alignment metrics:\n%s",
+            format_alignment_table(summary),
         )
-
-        if self.trainer.is_global_zero:
-            logger.info(
-                "Validation attention alignment metrics:\n%s",
-                format_alignment_table(summary),
-            )
 
     def _gather_alignment_scores(self) -> dict[str, list[float]]:
         """All-gather variable-length per-rank score lists into one dict."""

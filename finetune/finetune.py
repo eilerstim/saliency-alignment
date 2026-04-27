@@ -59,14 +59,14 @@ def finetune(cfg: DictConfig):
     )
 
     # Fine-tuning, followed by a full-validation pass that evaluates the
-    # attention alignment metrics on the complete validation set. The
-    # alignment metrics summary table is logged from FineTuner.on_validation_epoch_end.
+    # attention alignment metrics on the complete validation set. We drive
+    # the eval loop directly (see ``FineTuner.run_alignment_eval``) instead
+    # of ``trainer.validate``: re-entering the FSDP-wrapped model after fit
+    # leaves inner units in their sharded state, which surfaces as a
+    # ``[0]``-shape weight in CLIP's ``pre_layrnorm`` on the first forward.
     with Saliency(model, backend="torch_eager"):
         trainer.fit(fine_tuner)
-
-        fine_tuner.compute_alignment_metrics = True
-        trainer.limit_val_batches = 1.0
-        trainer.validate(fine_tuner)
+        fine_tuner.run_alignment_eval()
 
     # Gather and save model state dict on rank 0
     state = load_lt_state(cfg.strategy, trainer, model)
