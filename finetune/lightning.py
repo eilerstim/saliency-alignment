@@ -75,6 +75,15 @@ class FineTuner(L.LightningModule):
 
     def on_validation_epoch_start(self) -> None:
         self._val_alignment_scores = defaultdict(list)
+        if self.compute_alignment_metrics and self.trainer.is_global_zero:
+            try:
+                n_images = len(self.trainer.val_dataloaders.dataset)
+                logger.info(
+                    "Starting full-validation alignment metrics pass over %d images.",
+                    n_images,
+                )
+            except (AttributeError, TypeError):
+                logger.info("Starting full-validation alignment metrics pass.")
 
     def validation_step(self, batch: dict, batch_idx: int):
         # Forward pass with saliency accumulation
