@@ -1,203 +1,256 @@
-"""Evaluate the saliency alignment of a saved fine-tuned model.
+"""Multi-GPU saliency-alignment evaluator.
 
-The runner replays the same per-token mask-building logic used by
-``finetune.criterion.Criterion`` so the reported metrics correspond
-exactly to the supervision signal the model was trained against.
+Each rank loads its own copy of the checkpoint, processes a disjoint
+shard of the validation dataloader (via ``DistributedSampler``) and
+produces a per-image score tensor. The shards are all-gathered at the
+end so rank 0 can print the per-model summary.
 
-Aggregation
------------
-The pipeline reports per-model scores, computed bottom-up:
-
-    per-token score   →  per-image score (mean over the image's tokens)
-                      →  per-model score (mean over images)
-
-NaNs (tokens / images that were skipped because the metric is undefined,
-e.g. empty masks for AP) are excluded from each level so they don't bias
-the aggregate towards zero.
+Metrics are computed batched on the GPU, vectorised across all
+supervised tokens within an image (one ``argsort`` for AP, etc.). The
+mask-building logic mirrors :class:`finetune.criterion.base.Criterion`
+exactly so what we evaluate is what we trained against.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import dataclass
 
+import lightning as L
 import torch
 import torch.nn.functional as F
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import DataLoader
-from transformers import PreTrainedModel, ProcessorMixin
+from torch.utils.data import DataLoader, DistributedSampler
+from transformers import ProcessorMixin
 
-from vl_saliency import Saliency
 from vl_saliency.maps import SaliencyGrid
 
 from .metrics import (
-    aggregate_per_image,
-    aggregate_per_model,
     amr_normalised,
     average_precision,
     nss,
+    per_image_aggregate,
+    per_model_aggregate,
 )
 
 logger = logging.getLogger(__name__)
 
 
 METRIC_NAMES: tuple[str, ...] = ("AMR", "AP", "NSS")
-
-
-@dataclass(frozen=True)
-class TokenSample:
-    """One supervised generated token: a normalised attention map plus its
-    binary reference region. Both tensors live at the same resolution
-    (the panoptic mask's), as in the training criterion."""
-
-    saliency: torch.Tensor  # (H, W) probability-like
-    mask: torch.Tensor      # (H, W) bool
+N_METRICS = len(METRIC_NAMES)
 
 
 # ---------------------------------------------------------------------------
-# Per-batch token extraction
+# Per-image extraction (batched across the image's supervised tokens)
 # ---------------------------------------------------------------------------
 
 
-def _iter_tokens_from_batch(
-    batch: dict,
+def _per_image_tokens(
     saliency: SaliencyGrid,
-    *,
-    device: torch.device,
-) -> Iterator[tuple[int, TokenSample]]:
-    """Yield ``(image_index_in_batch, TokenSample)`` for every supervised
-    token in ``batch``.
+    labels: torch.Tensor,
+    segment_ids: torch.Tensor,
+    mask: torch.Tensor,
+    b: int,
+) -> tuple[torch.Tensor, torch.Tensor] | None:
+    """Build ``(attn, token_mask)`` of shape ``(n_tokens, H, W)`` for image
+    ``b`` in the batch, or ``None`` if it has no supervised tokens.
 
-    Mirrors :meth:`finetune.criterion.base.Criterion.__call__`:
-        * select tokens whose label is ``!= -100`` (i.e. caption tokens),
-        * align them with the trailing ``gen_len`` rows of the saliency grid,
-        * keep only tokens that reference at least one segment id,
-        * upsample patch-level saliency to mask resolution and softmax it.
+    Mirrors :meth:`Criterion.__call__`: trailing-``gen_len`` slice of the
+    saliency grid, ``has_segments`` filter, bilinear upsample and softmax.
     """
-    labels: torch.Tensor = batch["labels"]
-    segment_ids: torch.Tensor = batch["segment_ids"]
+    attn = saliency.maps_for_image(batch_idx=b, image_idx=0)  # (T, h, w)
+
+    gen_ids = labels[b] != -100
+    seg_ids = segment_ids[b][gen_ids]
+    gen_len = seg_ids.shape[0]
+    if gen_len == 0:
+        return None
+
+    attn = attn[-gen_len:]
+
+    has_segments = (seg_ids != -1).any(dim=1)
+    if not has_segments.any():
+        return None
+
+    seg_ids = seg_ids[has_segments].to(mask.device)
+    attn = attn[has_segments]
+
+    attn = F.interpolate(
+        attn.unsqueeze(1).float(),
+        size=tuple(mask.shape),
+        mode="bilinear",
+        align_corners=False,
+    ).squeeze(1)
+
+    n_tokens = attn.shape[0]
+    attn = torch.softmax(attn.flatten(1), dim=1).view(n_tokens, *mask.shape)
+
+    valid_seg = seg_ids != -1
+    seg_match = (mask[None, None] == seg_ids[:, :, None, None]) & valid_seg[
+        :, :, None, None
+    ]
+    token_mask = seg_match.any(dim=1)  # (n_tokens, H, W)
+
+    return attn, token_mask
+
+
+def _evaluate_batch(
+    batch: dict, saliency: SaliencyGrid, *, device: torch.device
+) -> tuple[torch.Tensor, int]:
+    """Compute per-image scores for one batch.
+
+    Returns ``(scores, n_tokens)`` where ``scores`` has shape
+    ``(batch_size, N_METRICS)`` (NaN rows for images that contributed no
+    supervised tokens) and ``n_tokens`` is the number of supervised
+    tokens that fed the metrics.
+    """
+    labels = batch["labels"]
+    segment_ids = batch["segment_ids"]
     masks: list[torch.Tensor] = batch["masks"]
 
-    for b in range(saliency.batch_size):
-        mask = masks[b].to(device)
-        attn = saliency.maps_for_image(batch_idx=b, image_idx=0)  # (T, h, w)
+    batch_size = saliency.batch_size
+    scores = torch.full(
+        (batch_size, N_METRICS), float("nan"), device=device, dtype=torch.float32
+    )
 
-        gen_ids = labels[b] != -100
-        seg_ids = segment_ids[b][gen_ids]  # (gen_len, max_segments)
-        gen_len = seg_ids.shape[0]
-        if gen_len == 0:
+    n_tokens = 0
+    for b in range(batch_size):
+        out = _per_image_tokens(
+            saliency, labels, segment_ids, masks[b].to(device), b
+        )
+        if out is None:
             continue
+        attn, token_mask = out
+        n_tokens += attn.shape[0]
 
-        attn = attn[-gen_len:]
+        # Stack per-token scores once; columns are (AMR, AP, NSS).
+        per_token = torch.stack(
+            [
+                amr_normalised(attn, token_mask),
+                average_precision(attn, token_mask),
+                nss(attn, token_mask),
+            ],
+            dim=-1,
+        )  # (n_tokens, N_METRICS)
+        scores[b] = per_image_aggregate(per_token)
 
-        has_segments = (seg_ids != -1).any(dim=1)
-        if not has_segments.any():
-            continue
-
-        seg_ids = seg_ids[has_segments].to(device)
-        attn = attn[has_segments]
-
-        # Upsample patch-level attention to mask resolution.
-        attn = F.interpolate(
-            attn.unsqueeze(1).float(),
-            size=tuple(mask.shape),
-            mode="bilinear",
-            align_corners=False,
-        ).squeeze(1)
-
-        # Convert each token's attention map to a probability distribution
-        # over pixels, matching the criterion's normalisation.
-        n_tokens = attn.shape[0]
-        attn = torch.softmax(attn.flatten(1), dim=1).view(n_tokens, *mask.shape)
-
-        # Build per-token boolean mask: True for any pixel whose panoptic id
-        # matches one of the token's referenced segments.
-        valid_seg = seg_ids != -1  # (n_tokens, max_segments)
-        seg_match = (mask[None, None] == seg_ids[:, :, None, None]) & valid_seg[
-            :, :, None, None
-        ]
-        token_mask = seg_match.any(dim=1)  # (n_tokens, H, W)
-
-        for t in range(n_tokens):
-            yield b, TokenSample(saliency=attn[t], mask=token_mask[t])
+    return scores, n_tokens
 
 
 # ---------------------------------------------------------------------------
-# Top-level evaluation loop
+# Distributed evaluation loop
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class EvaluationResult:
-    """Per-metric aggregate plus the underlying per-image score arrays
-    (handy for downstream plotting / significance testing)."""
+    """Per-image score matrix plus per-model aggregates.
 
-    per_image_scores: dict[str, list[float]]
+    ``per_image_scores`` is a CPU tensor of shape ``(N_images, N_METRICS)``
+    in metric order (``AMR, AP, NSS``). It already contains NaN entries
+    for images that the loop skipped (no supervised tokens, or DDP
+    padding) so callers can ``torch.nanmean`` it freely.
+    """
+
+    per_image_scores: torch.Tensor
     per_model: dict[str, dict[str, float]]
     n_tokens: int
 
 
 def evaluate(
-    model: PreTrainedModel,
+    model: torch.nn.Module,
     dataloader: Iterable[dict],
     *,
-    device: torch.device,
-    saliency_kwargs: dict | None = None,
+    fabric: L.Fabric,
+    log_every: int = 25,
 ) -> EvaluationResult:
-    """Run the full evaluation on ``dataloader`` and aggregate to per-model
-    scores. ``model`` should already be in eval mode and on ``device``."""
-    saliency_kwargs = {"backend": "torch_eager", **(saliency_kwargs or {})}
+    """Run evaluation across all ranks and aggregate to per-model scores.
 
-    per_image: dict[str, list[float]] = {m: [] for m in METRIC_NAMES}
-    n_tokens_total = 0
+    The caller is responsible for wrapping ``model`` in a ``Saliency``
+    context *before* DDP wrapping (otherwise the forward-method patch
+    lands on the outer wrapper while DDP still calls the unpatched inner
+    forward). ``model`` should already be set up via ``fabric.setup_module``
+    and ``dataloader`` produced by :func:`build_eval_dataloader`.
+    """
+    device = fabric.device
 
-    # ``no_grad`` (rather than ``inference_mode``) so the tensors stored
-    # inside the saliency accumulator remain regular autograd-aware tensors.
-    # Inference-mode tensors can't be reused outside the context, which the
-    # saliency grid relies on after the forward pass returns.
-    with torch.no_grad(), Saliency(model, **saliency_kwargs):
+    local_scores: list[torch.Tensor] = []
+    n_tokens_local = 0
+
+    # ``no_grad`` rather than ``inference_mode`` so the QK accumulator's
+    # cached tensors remain usable after the forward pass returns.
+    with torch.no_grad():
         for batch_idx, batch in enumerate(dataloader):
-            if batch is None:  # collator returned no valid examples
+            # Even for batches the collator dropped (returned ``None``),
+            # emit a NaN row per expected sample so per-rank tensor lengths
+            # stay in lock-step for the post-loop ``all_gather``.
+            if batch is None:
+                bs = dataloader.batch_size or 0
+                scores = torch.full(
+                    (bs, N_METRICS), float("nan"),
+                    device=device, dtype=torch.float32,
+                )
+                local_scores.append(scores)
                 continue
 
             tensor_batch = {
-                k: v.to(device) if isinstance(v, torch.Tensor) else v
+                k: (v.to(device) if isinstance(v, torch.Tensor) else v)
                 for k, v in batch.items()
             }
             outputs = model(**tensor_batch, return_dict=True)
             saliency: SaliencyGrid = outputs.saliency
 
-            # Group per-token scores by their image-in-batch so we can
-            # average per image immediately and keep memory bounded.
-            buckets: dict[int, dict[str, list[float]]] = {}
-            for b, sample in _iter_tokens_from_batch(
+            scores, n_t = _evaluate_batch(
                 tensor_batch, saliency, device=device
-            ):
-                bucket = buckets.setdefault(
-                    b, {m: [] for m in METRIC_NAMES}
-                )
-                bucket["AMR"].append(amr_normalised(sample.saliency, sample.mask))
-                bucket["AP"].append(average_precision(sample.saliency, sample.mask))
-                bucket["NSS"].append(nss(sample.saliency, sample.mask))
-                n_tokens_total += 1
+            )
+            local_scores.append(scores)
+            n_tokens_local += n_t
 
-            for bucket in buckets.values():
-                for metric in METRIC_NAMES:
-                    per_image[metric].append(aggregate_per_image(bucket[metric]))
-
-            if (batch_idx + 1) % 25 == 0:
+            if fabric.global_rank == 0 and (batch_idx + 1) % log_every == 0:
                 logger.info(
-                    "Evaluated %d batches  (%d images, %d supervised tokens so far)",
+                    "Rank 0: evaluated %d batches (%d local tokens)",
                     batch_idx + 1,
-                    len(per_image["AMR"]),
-                    n_tokens_total,
+                    n_tokens_local,
                 )
 
-    per_model = {m: aggregate_per_model(per_image[m]) for m in METRIC_NAMES}
+    local_tensor = (
+        torch.cat(local_scores, dim=0)
+        if local_scores
+        else torch.empty((0, N_METRICS), device=device)
+    )
+
+    # Sum-reduce token counts; gather per-image score rows across ranks.
+    n_tokens_total = int(
+        fabric.all_reduce(
+            torch.tensor(n_tokens_local, device=device), reduce_op="sum"
+        ).item()
+    )
+
+    # ``DistributedSampler(drop_last=True)`` makes per-rank counts equal,
+    # so a plain stack-and-flatten is sufficient.
+    gathered = fabric.all_gather(local_tensor)
+    if gathered.dim() == 3:  # (world_size, N_local, M)
+        per_image_scores = gathered.flatten(0, 1)
+    else:  # single-rank fallback: (N_local, M)
+        per_image_scores = gathered
+
+    per_image_cpu = per_image_scores.detach().to("cpu")
+    aggregates = per_model_aggregate(per_image_cpu)
+
+    per_model = {
+        name: {
+            "mean": float(aggregates["mean"][i]),
+            "median": float(aggregates["median"][i]),
+            "std": float(aggregates["std"][i]),
+            "n_images": int(aggregates["n_images"][i]),
+        }
+        for i, name in enumerate(METRIC_NAMES)
+    }
+
     return EvaluationResult(
-        per_image_scores=per_image,
+        per_image_scores=per_image_cpu,
         per_model=per_model,
         n_tokens=n_tokens_total,
     )
@@ -209,11 +262,7 @@ def evaluate(
 
 
 def format_results_table(result: EvaluationResult) -> str:
-    """Render a fixed-width table summarising per-model metrics.
-
-    Columns: metric name, mean, median, std (population), and the number
-    of images that contributed a finite score.
-    """
+    """Fixed-width per-metric table with mean / median / std / image count."""
     header = (
         f"| {'metric':<6} | {'mean':>9} | {'median':>9} | "
         f"{'std':>9} | {'n_images':>8} |"
@@ -221,13 +270,11 @@ def format_results_table(result: EvaluationResult) -> str:
     sep = "|" + "-" * (len(header) - 2) + "|"
     lines = [sep, header, sep]
     for metric in METRIC_NAMES:
-        stats = result.per_model[metric]
+        s = result.per_model[metric]
         lines.append(
             f"| {metric:<6} | "
-            f"{stats['mean']:>9.4f} | "
-            f"{stats['median']:>9.4f} | "
-            f"{stats['std']:>9.4f} | "
-            f"{stats['n_images']:>8d} |"
+            f"{s['mean']:>9.4f} | {s['median']:>9.4f} | "
+            f"{s['std']:>9.4f} | {s['n_images']:>8d} |"
         )
     lines.append(sep)
     lines.append(f"Tokens evaluated: {result.n_tokens}")
@@ -235,22 +282,41 @@ def format_results_table(result: EvaluationResult) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Dataloader plumbing for stand-alone eval
+# Distributed-friendly dataloader
 # ---------------------------------------------------------------------------
 
 
-def build_eval_dataloader(cfg: DictConfig, processor: ProcessorMixin) -> DataLoader:
-    """Construct the validation dataloader the same way ``FineTuner`` does,
-    but always with ``shuffle=False`` and ``drop_last=False`` so every image
-    in the validation slice is evaluated exactly once."""
+def build_eval_dataloader(
+    cfg: DictConfig, processor: ProcessorMixin, *, world_size: int, rank: int
+) -> DataLoader:
+    """Validation dataloader sharded across ranks.
+
+    ``DistributedSampler(drop_last=True)`` keeps per-rank lengths equal so
+    the post-loop ``all_gather`` doesn't need padding. At most
+    ``world_size - 1`` images are dropped from the tail of the validation
+    set (≪ 0.1 % of a 10k-image split — negligible) instead of being
+    duplicated and double-counted.
+    """
     dataset = instantiate(cfg.data.dataset, cfg.data, split="validation")
     collate_fn = instantiate(cfg.data.eval_collator, processor=processor)
+
+    sampler = DistributedSampler(
+        dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=False,
+        drop_last=True,
+    )
 
     dl_kwargs = OmegaConf.to_container(
         getattr(cfg, "dataloader", {}), resolve=True
     )
     assert isinstance(dl_kwargs, dict)
-    dl_kwargs["shuffle"] = False
-    dl_kwargs["drop_last"] = False
+    dl_kwargs.pop("shuffle", None)
+    # Keep ``drop_last=True`` (the training default) so every batch is
+    # full-sized: the post-loop ``all_gather`` then doesn't have to worry
+    # about a ragged partial last batch. At most ``batch_size - 1`` images
+    # per rank are dropped — << 1 % of the validation slice.
+    dl_kwargs["drop_last"] = True
 
-    return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
+    return DataLoader(dataset, sampler=sampler, collate_fn=collate_fn, **dl_kwargs)
