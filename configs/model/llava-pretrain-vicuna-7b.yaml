@@ -1,0 +1,12 @@
+name: liuhaotian/llava-pretrain-vicuna-7b-v1.3
+
+dtype: bfloat16
+
+gradient_checkpointing: true
+freeze:
+- vision_tower
+# - multi_modal_projector
+# - all 
+
+unfreeze: []
+# - multi_modal_projector

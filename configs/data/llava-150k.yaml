@@ -1,0 +1,31 @@
+# COCONut dataset configuration
+# Extends base COCO config with COCONut-specific captions and masks
+#
+# Additional folder structure (extends coco.yaml):
+# data/coco/
+# ├── panoptic_train2017_masks/        # COCONut panoptic masks
+# │   ├── 000000000009.png
+# │   └── ...
+# ├── panoptic_train2017_captions/     # COCONut annotated captions
+# │   ├── 000000000009.txt
+# │   └── ...
+# └── coconut_pancap_50k.tar           # Downloaded archive
+
+defaults:
+  - coconut
+  - _self_
+
+coconut_samples: 23000  # Number of samples to use from COCONut
+
+# Dataset configuration
+dataset:
+  _target_: finetune.data.llava_150k.dataset.llava_150k_instruct_dataset
+
+# Collator configuration
+collator:
+  _target_: finetune.data.coconut.collator.make_collate_fn  # TODO
+  # processor will be passed at runtime via partial
+
+eval_collator:
+  _target_: finetune.data.coconut.collator.make_collate_fn
+  # processor will be passed at runtime via partial

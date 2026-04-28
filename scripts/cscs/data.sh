@@ -15,7 +15,9 @@ source ./scripts/cscs/env.sh
 
 echo "Beginning downloading data at $(date)"
 
-python -m finetune.data.download \
-    hydra.run.dir=outputs/${SLURM_JOB_NAME}_${SLURM_JOB_ID}
+# python -m finetune.data.download \
+#     hydra.run.dir=outputs/${SLURM_JOB_NAME}_${SLURM_JOB_ID}
+
+python -m finetune.data.llava_150k.download
 
 echo "Finished downloading data at $(date)"
