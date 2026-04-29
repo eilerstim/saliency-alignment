@@ -3,7 +3,7 @@
 #SBATCH --job-name=saliency
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --gpus-per-node=4
@@ -17,7 +17,7 @@ source ./scripts/cscs/env.sh
 
 
 export CRITERION=kl
-export MODEL=llava-1.5-7b
+export MODEL=llava-pretrain-vicuna-7b
 export LAMBDA=0.5
 
 export TOKENIZERS_PARALLELISM=false  # Disable tokenizer parallelism to avoid deadlocks
@@ -31,6 +31,7 @@ srun $PROJECT_DIR/.venv/bin/python -m finetune \
     loss=$CRITERION \
     loss.weight=$LAMBDA \
     model=$MODEL \
+    data=llava-150k \
     # trainer.accumulate_grad_batches=1 \
     # strategy=ddp \
     # data=png \

@@ -1,7 +1,7 @@
 defaults:
-  - model: llava-1.5-7b
+  - model: llava-pretrain-vicuna-7b
   - optim: adamw
-  - data: coconut
+  - data: llava-150k
   - loss: kl
   - trainer
   - dataloader

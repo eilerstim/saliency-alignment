@@ -1,11 +1,21 @@
+from dataclasses import dataclass
+from typing import Literal
+
 import lightning as L
-import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
 from .criterion import Criterion
+
+
+@dataclass
+class DummySaliency:
+    saliency: Literal[None] = None
+
+    def accumulate_qk(self, q, k):
+        pass
 
 
 class FineTuner(L.LightningModule):
@@ -22,20 +32,27 @@ class FineTuner(L.LightningModule):
         # Instantiate auxiliary loss function
         self.auxiliary_loss: Criterion = instantiate(self.cfg.loss)
 
-    def forward(self, **batch):
-        return self.model(**batch, return_dict=True)
+    def forward(self, batch: tuple[dict, dict]):
+        annotated, non_annotated = batch
+        annotated_out = self.model(**annotated, return_dict=True)
 
-    def training_step(self, batch: dict, batch_idx: int):
+        dummy_saliency = DummySaliency()
+        non_annotated_out = self.model(
+            saliency=dummy_saliency, **non_annotated, return_dict=True
+        )
+        return annotated_out, non_annotated_out
+
+    def training_step(self, batch: tuple[dict, dict], batch_idx: int):
         # Forward pass with saliency accumulation
-        outputs = self(**batch)
-        loss = outputs.loss
+        annotated_out, non_annotated_out = self(**batch)
+        loss = annotated_out.loss + non_annotated_out.loss
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             segment_ids=batch["segment_ids"],
-            preds=outputs.logits,
-            saliency=outputs.saliency,
+            preds=annotated_out.logits,
+            saliency=annotated_out.saliency,
             masks=batch["masks"],
         )
 
@@ -44,6 +61,8 @@ class FineTuner(L.LightningModule):
             "train/ce_loss": loss.detach(),
             "train/auxiliary_loss": auxiliary_loss.detach(),
             "train/loss": loss.detach() + auxiliary_loss.detach(),
+            "train/annotated_loss": annotated_out.loss.detach(),
+            "train/non_annotated_loss": non_annotated_out.loss.detach(),
         }
         self.log_dict(
             log_dict,
@@ -54,45 +73,47 @@ class FineTuner(L.LightningModule):
 
         return loss + auxiliary_loss
 
-    def validation_step(self, batch: dict, batch_idx: int):
+    def validation_step(self, batch: tuple[dict, dict], batch_idx: int):
         # Forward pass with saliency accumulation
-        outputs = self(**batch)
-        loss = outputs.loss
+        annotated_out, non_annotated_out = self(**batch)
+        loss = annotated_out.loss + non_annotated_out.loss
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
             labels=batch["labels"],
             segment_ids=batch["segment_ids"],
-            preds=outputs.logits,
-            saliency=outputs.saliency,
+            preds=annotated_out.logits,
+            saliency=annotated_out.saliency,
             masks=batch["masks"],
         )
 
-        preds = outputs.logits.argmax(dim=-1)
-        labels = batch["labels"]
+        # preds = annotated_out.logits.argmax(dim=-1)
+        # labels = batch["labels"]
 
-        # Shift for next-token prediction
-        shift_preds = preds[:, :-1]
-        shift_labels = labels[:, 1:]
+        # # Shift for next-token prediction
+        # shift_preds = preds[:, :-1]
+        # shift_labels = labels[:, 1:]
 
-        # Ignore padding (-100)
-        valid_token_mask = shift_labels != -100
+        # # Ignore padding (-100)
+        # valid_token_mask = shift_labels != -100
 
-        if valid_token_mask.any():
-            accuracy = (
-                (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
-                .float()
-                .mean()
-            )
-        else:
-            accuracy = torch.tensor(0.0, device=labels.device)
+        # if valid_token_mask.any():
+        #     accuracy = (
+        #         (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
+        #         .float()
+        #         .mean()
+        #     )
+        # else:
+        #     accuracy = torch.tensor(0.0, device=labels.device)
 
         # Log relevant metrics
         log_dict = {
             "val/ce_loss": loss,
             "val/auxiliary_loss": auxiliary_loss,
             "val/loss": loss + auxiliary_loss,
-            "val/accuracy": accuracy,
+            # "val/accuracy": accuracy,
+            "val/annotated_loss": annotated_out.loss,
+            "val/non_annotated_loss": non_annotated_out.loss,
         }
         self.log_dict(
             log_dict,
