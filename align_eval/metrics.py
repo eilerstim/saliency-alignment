@@ -112,16 +112,19 @@ def per_image_scores(
         seg_ids = seg_ids[has_segments]
         attn = attn[has_segments]
 
-        # Bilinear-upsample the raw attention to annotation resolution. No
-        # softmax: the attention values are already a probability
-        # distribution from the model, AMR is scale-invariant in ``sal``
-        # by construction, and AP / NSS are monotone- / affine-invariant.
+        # Bilinear-upsample to annotation resolution, then softmax over the
+        # spatial dim so AMR sees a proper probability distribution. Raw
+        # ``saliency`` is logits (the training criterion softmaxes before
+        # KL); without this, ``sum(sal)`` can be <= 0 and AMR collapses to
+        # NaN. AP is rank-based and NSS is affine-invariant, so they're
+        # unaffected by the transform.
         attn = F.interpolate(
             attn.unsqueeze(1).float(),
             size=tuple(mask.shape),
             mode="bilinear",
             align_corners=False,
         ).squeeze(1)
+        attn = torch.softmax(attn.flatten(1), dim=1).view(-1, *mask.shape)
 
         valid = seg_ids != -1
         token_mask = (
