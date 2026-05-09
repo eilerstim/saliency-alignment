@@ -113,11 +113,10 @@ class COCONutPanCapDataset(Dataset):
         # Free the full JSON — we've extracted everything we need
         del annotations
 
-        # Deterministic prefix/suffix split: sort by image id, take the
-        # last ``n_val`` for validation and everything before for training.
-        # Sorting makes the split reproducible across machines regardless of
-        # the order entries appear in the panoptic JSON.
-        self.images.sort(key=lambda img: img["id"])
+        # Deterministic prefix/suffix split: take the last ``n_val`` images
+        # for validation, everything before for training. The COCONut JSON
+        # is the same on every machine so the iteration order above is
+        # already deterministic — no explicit sort needed.
         n_val = int(data_cfg.coconut.n_val)
 
         if n_val >= len(self.images):
