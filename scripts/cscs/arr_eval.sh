@@ -33,13 +33,14 @@ MODEL_ARGS="model=${MODEL_PATH},tokenizer=llava-hf/llava-1.5-7b-hf,tensor_parall
 # WANDB_ARGS="project=alignment-eval,entity=teilers-eth-z-rich,name=${MODEL_NAME},dir=${PROJECT_DIR}/outputs/lmms_eval/"
 
 uv pip install --force-reinstall numpy scipy --system
+export PYTHONPATH="$(pwd)/eval:$PYTHONPATH"
 
 python3 -m lmms_eval \
     --model vllm \
     --model_args "${MODEL_ARGS}" \
     --output_path "${PROJECT_DIR}/results/lm-eval/${MODEL_NAME}" \
     --include_path $PROJECT_DIR/eval/lmms_eval/tasks \
-    --tasks gqa,pope #,mmvetv2,mmbench,mmerealworld,
+    --tasks o3,vlms_are_biased,cv_bench,mmvp,mmstar,pope,countbench
     # --wandb_args "${WANDB_ARGS}" \
 
 echo "Finished LM-eval evaluation at $(date)"
