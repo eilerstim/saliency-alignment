@@ -100,7 +100,7 @@ def per_image_scores(
     device = labels.device
     batch_size = saliency.batch_size
     scores = torch.full((batch_size, len(METRIC_NAMES)), float("nan"), device=device)
-    drops = {"no_supervised_tokens": 0, "no_segments": 0}
+    drops = {"no_supervised_tokens": 0, "no_segments": 0, "no_mask_overlap": 0}
 
     for b in range(batch_size):
         mask = masks[b].to(device)
@@ -137,6 +137,14 @@ def per_image_scores(
         token_mask = (
             (mask[None, None] == seg_ids[:, :, None, None]) & valid[:, :, None, None]
         ).any(dim=1)
+
+        # Caption-referenced ids may not exist in the panoptic mask (data
+        # inconsistency); without overlap every per-token metric is NaN
+        # and the image's row would stay NaN. Count it as its own bucket
+        # so it doesn't get conflated with "kept".
+        if not token_mask.any():
+            drops["no_mask_overlap"] += 1
+            continue
 
         per_token = torch.stack(
             [amr(attn, token_mask), average_precision(attn, token_mask),

@@ -117,6 +117,7 @@ def evaluate(cfg: DictConfig) -> None:
         n_collator_drop = 0
         n_no_supervised = 0
         n_no_segments = 0
+        n_no_mask_overlap = 0
         for i, batch in enumerate(dataloader):
             if batch is None:
                 local.append(nan_pad(bs))
@@ -132,6 +133,7 @@ def evaluate(cfg: DictConfig) -> None:
             n_collator_drop += bs - scores.shape[0]
             n_no_supervised += drops["no_supervised_tokens"]
             n_no_segments += drops["no_segments"]
+            n_no_mask_overlap += drops["no_mask_overlap"]
             if scores.shape[0] < bs:
                 scores = torch.cat([scores, nan_pad(bs - scores.shape[0])], dim=0)
             local.append(scores)
@@ -145,8 +147,10 @@ def evaluate(cfg: DictConfig) -> None:
     per_image = gathered.flatten(0, 1) if gathered.dim() == 3 else gathered
 
     drop_counts = fabric.all_reduce(
-        torch.tensor([n_collator_drop, n_no_supervised, n_no_segments],
-                     device=fabric.device, dtype=torch.long),
+        torch.tensor(
+            [n_collator_drop, n_no_supervised, n_no_segments, n_no_mask_overlap],
+            device=fabric.device, dtype=torch.long,
+        ),
         reduce_op="sum",
     )
 
@@ -154,16 +158,17 @@ def evaluate(cfg: DictConfig) -> None:
         summary = summarise(per_image.cpu())
         n_total = len(dataloader.dataset)  # type: ignore[arg-type]
         n_processed = per_image.shape[0]
-        n_collator, n_no_sup, n_no_seg = (int(x) for x in drop_counts)
-        n_kept = n_processed - n_collator - n_no_sup - n_no_seg
+        n_col, n_sup, n_seg, n_olp = (int(x) for x in drop_counts)
+        n_kept = n_processed - n_col - n_sup - n_seg - n_olp
         logger.info(
             "\n=== Drop breakdown (n_val=%d) ===\n"
             "  drop-last tail        : %d\n"
             "  collator empty caption: %d\n"
             "  no supervised tokens  : %d\n"
             "  no segments referenced: %d\n"
+            "  caption segs not in mask: %d\n"
             "  kept                  : %d",
-            n_total, n_total - n_processed, n_collator, n_no_sup, n_no_seg, n_kept,
+            n_total, n_total - n_processed, n_col, n_sup, n_seg, n_olp, n_kept,
         )
         logger.info("\n=== Attention alignment metrics ===\n%s", format_table(summary))
 
