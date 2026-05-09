@@ -104,21 +104,29 @@ def evaluate(cfg: DictConfig) -> None:
     with Saliency(model, backend="torch_eager"), torch.no_grad():
         model = fabric.setup_module(model, move_to_device=True)
 
+        # Pad per-batch scores to ``batch_size`` so per-rank totals stay in
+        # lock-step for ``all_gather``. Rows are NaN when the collator
+        # dropped an example (empty caption) or the whole batch.
+        bs = dataloader.batch_size or 0
+        nan_pad = lambda n: torch.full(  # noqa: E731
+            (n, len(METRIC_NAMES)), float("nan"), device=fabric.device
+        )
+
         local: list[torch.Tensor] = []
         for i, batch in enumerate(dataloader):
             if batch is None:
-                local.append(torch.full(
-                    (dataloader.batch_size or 0, len(METRIC_NAMES)),
-                    float("nan"), device=fabric.device,
-                ))
+                local.append(nan_pad(bs))
                 continue
             batch = {k: v.to(fabric.device) if isinstance(v, torch.Tensor) else v
                      for k, v in batch.items()}
             outputs = model(**batch, return_dict=True)
-            local.append(per_image_scores(
+            scores = per_image_scores(
                 outputs.saliency, batch["masks"],
                 batch["segment_ids"], batch["labels"],
-            ))
+            )
+            if scores.shape[0] < bs:
+                scores = torch.cat([scores, nan_pad(bs - scores.shape[0])], dim=0)
+            local.append(scores)
             if fabric.global_rank == 0 and (i + 1) % 25 == 0:
                 logger.info("Evaluated %d batches", i + 1)
 
