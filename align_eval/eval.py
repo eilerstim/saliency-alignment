@@ -118,6 +118,7 @@ def evaluate(cfg: DictConfig) -> None:
         n_no_supervised = 0
         n_no_segments = 0
         n_no_mask_overlap = 0
+        overlap_sample: tuple[list[int], list[int]] | None = None
         for i, batch in enumerate(dataloader):
             if batch is None:
                 local.append(nan_pad(bs))
@@ -126,7 +127,7 @@ def evaluate(cfg: DictConfig) -> None:
             batch = {k: v.to(fabric.device) if isinstance(v, torch.Tensor) else v
                      for k, v in batch.items()}
             outputs = model(**batch, return_dict=True)
-            scores, drops = per_image_scores(
+            scores, drops, sample = per_image_scores(
                 outputs.saliency, batch["masks"],
                 batch["segment_ids"], batch["labels"],
             )
@@ -134,6 +135,8 @@ def evaluate(cfg: DictConfig) -> None:
             n_no_supervised += drops["no_supervised_tokens"]
             n_no_segments += drops["no_segments"]
             n_no_mask_overlap += drops["no_mask_overlap"]
+            if overlap_sample is None and sample is not None:
+                overlap_sample = sample
             if scores.shape[0] < bs:
                 scores = torch.cat([scores, nan_pad(bs - scores.shape[0])], dim=0)
             local.append(scores)
@@ -170,6 +173,12 @@ def evaluate(cfg: DictConfig) -> None:
             "  kept                  : %d",
             n_total, n_total - n_processed, n_col, n_sup, n_seg, n_olp, n_kept,
         )
+        if overlap_sample is not None:
+            cap_segs, mask_segs = overlap_sample
+            logger.info(
+                "  example no_mask_overlap: caption refs %s, mask has %s",
+                cap_segs, mask_segs,
+            )
         logger.info("\n=== Attention alignment metrics ===\n%s", format_table(summary))
 
         out_dir = Path(hydra_wd)
