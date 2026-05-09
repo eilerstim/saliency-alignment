@@ -86,16 +86,21 @@ def per_image_scores(
     masks: list[Tensor],
     segment_ids: Int[Tensor, "B S M"],
     labels: Int[Tensor, "B S"],
-) -> Float[Tensor, "B 3"]:
+) -> tuple[Float[Tensor, "B 3"], dict[str, int]]:
     """Compute per-image (AMR, AP, NSS) by NaN-mean over supervised tokens.
 
     Mirrors :class:`finetune.criterion.base.Criterion` for the attention /
     token-mask construction so what is evaluated matches what was trained
     against. Rows for images with no supervised tokens stay NaN.
+
+    Returns the score tensor and a dict counting per-image skips:
+    ``no_supervised_tokens`` (caption tokens didn't survive label masking)
+    and ``no_segments`` (caption has no panoptic ids referenced).
     """
     device = labels.device
     batch_size = saliency.batch_size
     scores = torch.full((batch_size, len(METRIC_NAMES)), float("nan"), device=device)
+    drops = {"no_supervised_tokens": 0, "no_segments": 0}
 
     for b in range(batch_size):
         mask = masks[b].to(device)
@@ -103,11 +108,13 @@ def per_image_scores(
 
         seg_ids = segment_ids[b][labels[b] != -100]
         if seg_ids.shape[0] == 0:
+            drops["no_supervised_tokens"] += 1
             continue
         attn = attn[-seg_ids.shape[0]:]
 
         has_segments = (seg_ids != -1).any(dim=1)
         if not has_segments.any():
+            drops["no_segments"] += 1
             continue
         seg_ids = seg_ids[has_segments]
         attn = attn[has_segments]
@@ -137,7 +144,7 @@ def per_image_scores(
         )
         scores[b] = torch.nanmean(per_token, dim=0)
 
-    return scores
+    return scores, drops
 
 
 def summarise(per_image: Float[Tensor, "N 3"]) -> dict[str, dict[str, float]]:

@@ -114,17 +114,24 @@ def evaluate(cfg: DictConfig) -> None:
         )
 
         local: list[torch.Tensor] = []
+        n_collator_drop = 0
+        n_no_supervised = 0
+        n_no_segments = 0
         for i, batch in enumerate(dataloader):
             if batch is None:
                 local.append(nan_pad(bs))
+                n_collator_drop += bs
                 continue
             batch = {k: v.to(fabric.device) if isinstance(v, torch.Tensor) else v
                      for k, v in batch.items()}
             outputs = model(**batch, return_dict=True)
-            scores = per_image_scores(
+            scores, drops = per_image_scores(
                 outputs.saliency, batch["masks"],
                 batch["segment_ids"], batch["labels"],
             )
+            n_collator_drop += bs - scores.shape[0]
+            n_no_supervised += drops["no_supervised_tokens"]
+            n_no_segments += drops["no_segments"]
             if scores.shape[0] < bs:
                 scores = torch.cat([scores, nan_pad(bs - scores.shape[0])], dim=0)
             local.append(scores)
@@ -137,8 +144,27 @@ def evaluate(cfg: DictConfig) -> None:
     gathered = fabric.all_gather(local_tensor)
     per_image = gathered.flatten(0, 1) if gathered.dim() == 3 else gathered
 
+    drop_counts = fabric.all_reduce(
+        torch.tensor([n_collator_drop, n_no_supervised, n_no_segments],
+                     device=fabric.device, dtype=torch.long),
+        reduce_op="sum",
+    )
+
     if fabric.global_rank == 0:
         summary = summarise(per_image.cpu())
+        n_total = len(dataloader.dataset)  # type: ignore[arg-type]
+        n_processed = per_image.shape[0]
+        n_collator, n_no_sup, n_no_seg = (int(x) for x in drop_counts)
+        n_kept = n_processed - n_collator - n_no_sup - n_no_seg
+        logger.info(
+            "\n=== Drop breakdown (n_val=%d) ===\n"
+            "  drop-last tail        : %d\n"
+            "  collator empty caption: %d\n"
+            "  no supervised tokens  : %d\n"
+            "  no segments referenced: %d\n"
+            "  kept                  : %d",
+            n_total, n_total - n_processed, n_collator, n_no_sup, n_no_seg, n_kept,
+        )
         logger.info("\n=== Attention alignment metrics ===\n%s", format_table(summary))
 
         out_dir = Path(hydra_wd)
