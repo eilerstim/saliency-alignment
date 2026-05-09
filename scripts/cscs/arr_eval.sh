@@ -33,7 +33,6 @@ MODEL_ARGS="model=${MODEL_PATH},tokenizer=llava-hf/llava-1.5-7b-hf,tensor_parall
 # WANDB_ARGS="project=alignment-eval,entity=teilers-eth-z-rich,name=${MODEL_NAME},dir=${PROJECT_DIR}/outputs/lmms_eval/"
 
 uv pip install --force-reinstall numpy scipy --system
-export PYTHONPATH="$(pwd)/eval:$PYTHONPATH"
 
 python3 -m lmms_eval \
     --model vllm \
