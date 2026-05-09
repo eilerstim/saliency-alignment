@@ -44,7 +44,7 @@ exclude = ["eval"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["finetune"]
+files = ["finetune", "align_eval"]
 exclude = ["\\.venv", "env", "build", "dist"]
 follow_imports = "skip"  # don't analyze third-party libs
 ignore_missing_imports = true

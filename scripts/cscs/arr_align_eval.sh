@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --account=aa013
+#SBATCH --job-name=align-eval
+#SBATCH --output=logs/%x_%A_%a.out
+#SBATCH --error=logs/%x_%A_%a.err
+#SBATCH --time=04:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=4
+#SBATCH --gpus-per-node=4
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=320G
+#SBATCH --environment=saliency
+#SBATCH -C thp_never&nvidia_vboost_enabled
+
+set -euo pipefail
+
+RUN_ID="$1"
+
+source ./scripts/cscs/env.sh
+
+export TOKENIZERS_PARALLELISM=false
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export NCCL_IB_DISABLE=1
+
+echo "Beginning alignment eval of ${RUN_ID} at $(date)"
+
+srun $PROJECT_DIR/.venv/bin/python -m align_eval \
+    checkpoint="models/${RUN_ID}"
+
+echo "Finished alignment eval of ${RUN_ID} at $(date)"

@@ -113,17 +113,23 @@ class COCONutPanCapDataset(Dataset):
         # Free the full JSON — we've extracted everything we need
         del annotations
 
-        # Deterministic 90/10 split with an isolated RNG (unaffected by global state)
-        n_total = len(self.images)
-        n_train = int(0.9 * n_total)
+        # Deterministic prefix/suffix split: sort by image id, take the
+        # first ``n_train`` for training and everything after for validation.
+        # Sorting makes the split reproducible across machines regardless of
+        # the order entries appear in the panoptic JSON.
+        self.images.sort(key=lambda img: img["id"])
+        n_train = int(data_cfg.coconut.n_train)
 
-        g = torch.Generator().manual_seed(42)
-        perm = torch.randperm(n_total, generator=g).tolist()
+        if n_train >= len(self.images):
+            raise ValueError(
+                f"n_train={n_train} leaves no images for validation "
+                f"(only {len(self.images)} COCONut images available)."
+            )
 
         if split == "train":
-            self.images = [self.images[i] for i in perm[:n_train]]
+            self.images = self.images[:n_train]
         else:
-            self.images = [self.images[i] for i in perm[n_train:]]
+            self.images = self.images[n_train:]
 
         # Trim caches to only images in this split
         active_ids = {img["id"] for img in self.images}
