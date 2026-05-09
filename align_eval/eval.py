@@ -70,7 +70,7 @@ def evaluate(cfg: DictConfig) -> None:
     fabric = L.Fabric(
         accelerator="auto",
         strategy="ddp",
-        precision="bf16-mixed",
+        precision="32-true",
         plugins=[SLURMEnvironment()],
     )
     fabric.launch()
@@ -87,23 +87,24 @@ def evaluate(cfg: DictConfig) -> None:
         )
 
     # Eager attention is required for vl_saliency's hook-based extractor.
+    # Full precision so the metrics aren't biased by bf16 attention noise.
     model = AutoModelForImageTextToText.from_pretrained(
-        model_path, dtype=cfg.model.dtype, attn_implementation="eager"
+        model_path, dtype=torch.float32, attn_implementation="eager"
     )
     processor = AutoProcessor.from_pretrained(model_path)
     model.eval()
     model.requires_grad_(False)
+    model = model.to(fabric.device)
 
     dataloader = _build_dataloader(
         cfg, processor, world_size=fabric.world_size, rank=fabric.global_rank
     )
 
-    # Patch the bare model BEFORE Fabric wraps it: ``Saliency`` rebinds
-    # ``model.forward``, and DDP only sees the patched version if the
-    # patch happens before wrapping.
+    # No ``fabric.setup_module`` call: inference doesn't need gradient
+    # sync, and DDP refuses to wrap a frozen (no-grad) module. The
+    # process group from ``fabric.launch`` is still up so ``all_gather``
+    # works at the end of the loop.
     with Saliency(model, backend="torch_eager"), torch.no_grad():
-        model = fabric.setup_module(model, move_to_device=True)
-
         # Pad per-batch scores to ``batch_size`` so per-rank totals stay in
         # lock-step for ``all_gather``. Rows are NaN when the collator
         # dropped an example (empty caption) or the whole batch.
