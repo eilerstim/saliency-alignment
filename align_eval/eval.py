@@ -70,7 +70,7 @@ def evaluate(cfg: DictConfig) -> None:
     fabric = L.Fabric(
         accelerator="auto",
         strategy="ddp",
-        precision="32-true",
+        precision="bf16-mixed",
         plugins=[SLURMEnvironment()],
     )
     fabric.launch()
@@ -87,9 +87,9 @@ def evaluate(cfg: DictConfig) -> None:
         )
 
     # Eager attention is required for vl_saliency's hook-based extractor.
-    # Full precision so the metrics aren't biased by bf16 attention noise.
+    # Match the bf16 training precision so metrics see the same numerics.
     model = AutoModelForImageTextToText.from_pretrained(
-        model_path, dtype=torch.float32, attn_implementation="eager"
+        model_path, dtype=cfg.model.dtype, attn_implementation="eager"
     )
     processor = AutoProcessor.from_pretrained(model_path)
     model.eval()
