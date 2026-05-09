@@ -15,6 +15,11 @@
 set -euo pipefail
 
 RUN_ID="$1"
+CRITERION="$2"
+LAMBDA="$3"
+MODEL_SIZE="$4"
+
+export CRITERION LAMBDA MODEL_SIZE
 
 source ./scripts/cscs/env.sh
 
@@ -25,7 +30,10 @@ export NCCL_IB_DISABLE=1
 
 echo "Beginning alignment eval of ${RUN_ID} at $(date)"
 
-srun $PROJECT_DIR/.venv/bin/python -m align_eval \
-    checkpoint="models/${RUN_ID}"
+srun $PROJECT_DIR/.venv/bin/python -m align_eval.eval \
+    run_id="${RUN_ID}" \
+    loss="${CRITERION}" \
+    loss.weight="${LAMBDA}" \
+    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
 echo "Finished alignment eval of ${RUN_ID} at $(date)"

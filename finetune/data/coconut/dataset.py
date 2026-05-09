@@ -114,22 +114,22 @@ class COCONutPanCapDataset(Dataset):
         del annotations
 
         # Deterministic prefix/suffix split: sort by image id, take the
-        # first ``n_train`` for training and everything after for validation.
+        # last ``n_val`` for validation and everything before for training.
         # Sorting makes the split reproducible across machines regardless of
         # the order entries appear in the panoptic JSON.
         self.images.sort(key=lambda img: img["id"])
-        n_train = int(data_cfg.coconut.n_train)
+        n_val = int(data_cfg.coconut.n_val)
 
-        if n_train >= len(self.images):
+        if n_val >= len(self.images):
             raise ValueError(
-                f"n_train={n_train} leaves no images for validation "
+                f"n_val={n_val} leaves no images for training "
                 f"(only {len(self.images)} COCONut images available)."
             )
 
         if split == "train":
-            self.images = self.images[:n_train]
+            self.images = self.images[:-n_val]
         else:
-            self.images = self.images[n_train:]
+            self.images = self.images[-n_val:]
 
         # Trim caches to only images in this split
         active_ids = {img["id"] for img in self.images}

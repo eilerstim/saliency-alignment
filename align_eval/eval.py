@@ -9,9 +9,15 @@ Splitting this out of the training pipeline avoids re-entering the
 FSDP-wrapped model after fit (Lightning leaves inner units sharded),
 and lets metrics be re-computed against any saved checkpoint.
 
+Reuses ``configs/config.yaml`` so checkpoint location, model dtype,
+dataset paths and dataloader kwargs all stay defined in one place.
+The same env vars as training resolve ``run_id`` to the matching
+checkpoint directory.
+
 Usage (multi-GPU via SLURM srun, one rank per GPU):
 
-    srun python -m align_eval checkpoint=models/<run_id>
+    srun python -m align_eval.eval                # ${checkpoint_dir}/${run_id}
+    srun python -m align_eval.eval model_path=... # explicit override
 """
 
 import json
@@ -59,7 +65,7 @@ def _build_dataloader(
     return DataLoader(dataset, sampler=sampler, collate_fn=collate_fn, **dl_kwargs)
 
 
-@hydra.main(version_base="1.3", config_path="../configs", config_name="eval")
+@hydra.main(version_base="1.3", config_path="../configs", config_name="config")
 def evaluate(cfg: DictConfig) -> None:
     fabric = L.Fabric(
         accelerator="auto",
@@ -72,18 +78,19 @@ def evaluate(cfg: DictConfig) -> None:
     L.seed_everything(cfg.seed)
     torch.set_float32_matmul_precision("high")
 
+    model_path = cfg.get("model_path") or f"{cfg.checkpoint_dir}/{cfg.run_id}"
     hydra_wd = HydraConfig.get().runtime.output_dir
     if fabric.global_rank == 0:
         logger.info(
             "Loading checkpoint: %s (world_size=%d)",
-            cfg.checkpoint, fabric.world_size,
+            model_path, fabric.world_size,
         )
 
     # Eager attention is required for vl_saliency's hook-based extractor.
     model = AutoModelForImageTextToText.from_pretrained(
-        cfg.checkpoint, dtype=getattr(torch, cfg.dtype), attn_implementation="eager"
+        model_path, dtype=cfg.model.dtype, attn_implementation="eager"
     )
-    processor = AutoProcessor.from_pretrained(cfg.checkpoint)
+    processor = AutoProcessor.from_pretrained(model_path)
     model.eval()
     model.requires_grad_(False)
 
@@ -127,7 +134,11 @@ def evaluate(cfg: DictConfig) -> None:
 
         out_dir = Path(hydra_wd)
         (out_dir / "alignment_summary.json").write_text(json.dumps(
-            {"checkpoint": cfg.checkpoint, "summary": summary}, indent=2
+            {"checkpoint": model_path, "summary": summary}, indent=2
         ))
         torch.save(per_image.cpu(), out_dir / "alignment_per_image.pt")
         logger.info("Wrote alignment metrics to %s", out_dir)
+
+
+if __name__ == "__main__":
+    evaluate()

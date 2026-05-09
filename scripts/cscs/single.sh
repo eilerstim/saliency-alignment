@@ -29,7 +29,8 @@ echo "Submitting jobs for ${RUN_ID} at $(date)"
 if [ "${EVAL_ONLY}" = "true" ]; then
     sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
     sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
-    sbatch scripts/cscs/arr_align_eval.sh "$RUN_ID"
+    sbatch scripts/cscs/arr_align_eval.sh \
+        "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE"
     echo "Submitted EVAL only for ${RUN_ID}"
     exit 0
 fi
