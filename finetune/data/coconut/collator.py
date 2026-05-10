@@ -82,7 +82,6 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         texts = []
         parsed_segments_list: list[list[tuple[list[int], str]]] = []
         panoptic_masks = []
-        image_ids: list[int] = []
 
         for example in examples:
             image = example["image"]
@@ -117,7 +116,6 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             texts.append(prompt)
             parsed_segments_list.append(parsed_segments)
             panoptic_masks.append(mask)
-            image_ids.append(example["image_id"])
 
         if not images:
             return None
@@ -188,7 +186,6 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             "labels": labels,
             "segment_ids": segment_ids_tensor,
             "masks": panoptic_masks,
-            "image_ids": torch.tensor(image_ids, dtype=torch.long),
         }
 
     return collate_fn

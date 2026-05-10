@@ -86,28 +86,16 @@ def per_image_scores(
     masks: list[Tensor],
     segment_ids: Int[Tensor, "B S M"],
     labels: Int[Tensor, "B S"],
-    image_ids: Tensor | None = None,
-) -> tuple[
-    Float[Tensor, "B 3"],
-    dict[str, int],
-    tuple[int | None, list[int], list[int]] | None,
-]:
+) -> Float[Tensor, "B 3"]:
     """Compute per-image (AMR, AP, NSS) by NaN-mean over supervised tokens.
 
     Mirrors :class:`finetune.criterion.base.Criterion` for the attention /
     token-mask construction so what is evaluated matches what was trained
     against. Rows for images with no supervised tokens stay NaN.
-
-    Returns the score tensor, per-stage drop counts, and a sample of
-    ``(image_id, caption_seg_ids, mask_seg_ids)`` from the first
-    ``no_mask_overlap`` image in the batch (or ``None``) for diagnostic
-    logging. ``image_id`` is ``None`` if ``image_ids`` was not provided.
     """
     device = labels.device
     batch_size = saliency.batch_size
     scores = torch.full((batch_size, len(METRIC_NAMES)), float("nan"), device=device)
-    drops = {"no_supervised_tokens": 0, "no_segments": 0, "no_mask_overlap": 0}
-    sample: tuple[int | None, list[int], list[int]] | None = None
 
     for b in range(batch_size):
         mask = masks[b].to(device)
@@ -115,13 +103,11 @@ def per_image_scores(
 
         seg_ids = segment_ids[b][labels[b] != -100]
         if seg_ids.shape[0] == 0:
-            drops["no_supervised_tokens"] += 1
             continue
         attn = attn[-seg_ids.shape[0]:]
 
         has_segments = (seg_ids != -1).any(dim=1)
         if not has_segments.any():
-            drops["no_segments"] += 1
             continue
         seg_ids = seg_ids[has_segments]
         attn = attn[has_segments]
@@ -145,28 +131,13 @@ def per_image_scores(
             (mask[None, None] == seg_ids[:, :, None, None]) & valid[:, :, None, None]
         ).any(dim=1)
 
-        # Caption-referenced ids may not exist in the panoptic mask (data
-        # inconsistency); without overlap every per-token metric is NaN
-        # and the image's row would stay NaN. Count it as its own bucket
-        # so it doesn't get conflated with "kept".
-        if not token_mask.any():
-            drops["no_mask_overlap"] += 1
-            if sample is None:
-                img_id = int(image_ids[b]) if image_ids is not None else None
-                sample = (
-                    img_id,
-                    seg_ids[valid].unique().cpu().tolist(),
-                    mask.unique().cpu().tolist(),
-                )
-            continue
-
         per_token = torch.stack(
             [amr(attn, token_mask), average_precision(attn, token_mask),
              nss(attn, token_mask)], dim=-1
         )
         scores[b] = torch.nanmean(per_token, dim=0)
 
-    return scores, drops, sample
+    return scores
 
 
 def summarise(per_image: Float[Tensor, "N 3"]) -> dict[str, dict[str, float]]:

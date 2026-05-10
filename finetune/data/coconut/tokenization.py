@@ -41,10 +41,11 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
         raw_ids = match.group(1)
         annotated_text = match.group(2)
 
-        # Split by comma, strip spaces, filter valid integers
-        # We add 1 to each ID to match the IDs in segment_infos and masks
+        # Split by comma, strip spaces, filter valid integers.
+        # Caption IDs already match the values stored in segment_infos and
+        # the panoptic mask (mask value 0 = void, 1..N = segments).
         id_list = [
-            int(x) + 1
+            int(x)
             for x in (part.strip() for part in raw_ids.split(","))
             if x and x.isdigit()
         ]

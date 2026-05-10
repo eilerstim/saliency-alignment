@@ -172,5 +172,4 @@ class COCONutPanCapDataset(Dataset):
             "mask": mask,
             "caption": self.captions[img_id],
             "segments_info": self.id_to_segments.get(img_id, []),
-            "image_id": img_id,
         }
