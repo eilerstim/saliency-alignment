@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -12,6 +13,26 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
+
+# COCONut PanCap mixes two annotation styles. We only keep ``<N: text>``
+# (colon, 1-indexed) where the bracket ids match mask values directly;
+# the ``<N>text>`` style is 0-indexed and uses a non-standard separator,
+# colon-style brackets that reference id 0 would target the mask's
+# void/background pixels rather than a real segment, and unannotated
+# pure-prose captions contribute nothing to the alignment loss / metric.
+_NO_COLON_ANNOTATION_RE = re.compile(r"<\s*[\d,\s]+\s*>")
+_COLON_ID_LIST_RE = re.compile(r"<\s*([\d,\s]+)\s*:")
+
+
+def _has_clean_format(caption: str) -> bool:
+    if _NO_COLON_ANNOTATION_RE.search(caption):
+        return False
+    has_annotation = False
+    for m in _COLON_ID_LIST_RE.finditer(caption):
+        if any(int(d) == 0 for d in re.findall(r"\d+", m.group(1))):
+            return False
+        has_annotation = True
+    return has_annotation
 
 
 class COCONutPanCapDataset(Dataset):
@@ -78,6 +99,7 @@ class COCONutPanCapDataset(Dataset):
         self.captions: dict[int, str] = {}
         skipped_no_caption = 0
         skipped_broken = 0
+        skipped_bad_format = 0
 
         for img in annotations["images"]:
             stem = img["file_name"].rsplit(".", 1)[0]
@@ -87,20 +109,27 @@ class COCONutPanCapDataset(Dataset):
                 continue
 
             caption_filename = f"{stem}.txt"
-            if caption_filename in available_captions:
-                caption_path = self.captions_dir / caption_filename
-                with open(caption_path) as f:
-                    self.captions[img["id"]] = f.read().strip()
-                self.images.append(img)
-            else:
+            if caption_filename not in available_captions:
                 skipped_no_caption += 1
+                continue
 
-        if skipped_no_caption or skipped_broken:
+            caption_path = self.captions_dir / caption_filename
+            with open(caption_path) as f:
+                caption = f.read().strip()
+            if not _has_clean_format(caption):
+                skipped_bad_format += 1
+                continue
+
+            self.captions[img["id"]] = caption
+            self.images.append(img)
+
+        if skipped_no_caption or skipped_broken or skipped_bad_format:
             rank = dist.get_rank() if dist.is_initialized() else 0
             if rank == 0:
                 logger.info(
                     f"Skipped {skipped_no_caption} images with no caption, "
-                    f"{skipped_broken} images due to broken captions."
+                    f"{skipped_broken} images due to broken captions, "
+                    f"{skipped_bad_format} images due to non-strict annotation format."
                 )
 
         # Pre-extract segments_info keyed by image ID
@@ -113,17 +142,22 @@ class COCONutPanCapDataset(Dataset):
         # Free the full JSON — we've extracted everything we need
         del annotations
 
-        # Deterministic 90/10 split with an isolated RNG (unaffected by global state)
-        n_total = len(self.images)
-        n_train = int(0.9 * n_total)
+        # Deterministic prefix/suffix split: take the last ``n_val`` images
+        # for validation, everything before for training. The COCONut JSON
+        # is the same on every machine so the iteration order above is
+        # already deterministic — no explicit sort needed.
+        n_val = int(data_cfg.coconut.n_val)
 
-        g = torch.Generator().manual_seed(42)
-        perm = torch.randperm(n_total, generator=g).tolist()
+        if n_val >= len(self.images):
+            raise ValueError(
+                f"n_val={n_val} leaves no images for training "
+                f"(only {len(self.images)} COCONut images available)."
+            )
 
         if split == "train":
-            self.images = [self.images[i] for i in perm[:n_train]]
+            self.images = self.images[:-n_val]
         else:
-            self.images = [self.images[i] for i in perm[n_train:]]
+            self.images = self.images[-n_val:]
 
         # Trim caches to only images in this split
         active_ids = {img["id"] for img in self.images}
