@@ -36,3 +36,9 @@ coconut:
   captions_url: https://huggingface.co/datasets/xdeng77/coconut_pancap/resolve/main/caption_train2017.tar?download=true
   captions_tar_path: ${..data_dir}/caption_train2017.tar
   broken_file: ${..data_dir}/broken.txt
+
+  # Deterministic split: images sorted by id, the last ``n_val`` go to
+  # validation and everything before that is training. The same split is
+  # used by the post-training alignment eval so reported metrics are
+  # computed on images the model has never seen.
+  n_val: 10000

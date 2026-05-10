@@ -52,10 +52,20 @@ def load_lt_state(strategy: str, trainer: L.Trainer, model: PreTrainedModel):
         lt_state = trainer.strategy.model.state_dict()  # type: ignore
 
     # strip the Lightning prefix
-    hf_state = {
-        k.removeprefix("model."): v
-        for k, v in lt_state.items()
-        if k.startswith("model.")
-    }
+    hf_state = {}
+    for k, v in lt_state.items():
+        # Check if the key starts with the expected lightning module prefix
+        if k.startswith("model."):
+            k_stripped = k.removeprefix("model.")
+            # Handle potential double-wrapping in newer Lightning/FSDP versions
+            # Ensure we only strip if it specifically wraps LLaVA bases
+            parts = k_stripped.split(".")
+            if len(parts) > 1 and parts[0] == "model" and parts[1] in [
+                "language_model",
+                "vision_tower",
+                "multi_modal_projector",
+            ]:
+                k_stripped = k_stripped.removeprefix("model.")
+            hf_state[k_stripped] = v
 
     return hf_state

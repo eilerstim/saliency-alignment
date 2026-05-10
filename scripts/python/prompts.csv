@@ -1,0 +1,21 @@
+word;prompt;response;image_url
+four;How many cats are in the image?;There are four cats in the image.;https://thumbs.dreamstime.com/b/three-red-cats-white-background-93789621.jpg
+three;How many cats are in the image?;There are three cats in the image.;https://thumbs.dreamstime.com/b/three-red-cats-white-background-93789621.jpg
+two;How many cats are in the image?;There are two cats in the image.;https://thumbs.dreamstime.com/b/three-red-cats-white-background-93789621.jpg
+rows;Describe the image.;The image shows a murder of crows flying above a tree branch.;https://i0.wp.com/urbannature.blog/wp-content/uploads/2016/03/crow-dance.jpg?resize=676%2C676&ssl=1
+red;What color hats are people wearing in the image?;Many people are wearing red hats, although some are wearing yellow, pink, or beige;https://www.umontpellier.fr/wp-content/uploads/2025/06/image.jpeg
+yellow;What color hats are people wearing in the image?;Many people are wearing red hats, although some are wearing yellow, pink, or beige;https://www.umontpellier.fr/wp-content/uploads/2025/06/image.jpeg
+green;What color hats are people wearing in the image?;Many people are wearing red hats, although some are wearing yellow, pink, or green;https://www.umontpellier.fr/wp-content/uploads/2025/06/image.jpeg
+six;How many fingers does this hand have?;The hand has six fingers.;https://i.ytimg.com/vi/RVOtZPujvqs/maxresdefault.jpg
+five;How many fingers does this hand have?;The hand has five fingers.;https://i.ytimg.com/vi/RVOtZPujvqs/maxresdefault.jpg
+China;Which country is this picture taken in?;The picture is taken in China.;https://explore-live.s3.eu-west-1.amazonaws.com/medialibraries/explore/blog-images/2020%2007%20july/shutterstock_130595177.jpg?ext=.jpg&width=1920&format=webp&quality=80&v=202007271421%201920w
+bottom;Where is the watermelon?;The watermelon is at the bottom of the image.;https://www.shutterstock.com/shutterstock/photos/94977685/display_1500/stock-photo-circle-with-lots-of-food-items-94977685.jpg
+middle;Where is the carrot?;The carrot is in the middle of the image.;https://www.shutterstock.com/shutterstock/photos/94977685/display_1500/stock-photo-circle-with-lots-of-food-items-94977685.jpg
+apple;Describe the image.;The image shows a lot of food items arranged to fill a circle, including apples, a watermelon, a burger, and sandwiches.;https://www.shutterstock.com/shutterstock/photos/94977685/display_1500/stock-photo-circle-with-lots-of-food-items-94977685.jpg
+watermelon;Describe the image.;The image shows a lot of food items arranged to fill a circle, including apples, a watermelon, a burger, and sandwiches.;https://www.shutterstock.com/shutterstock/photos/94977685/display_1500/stock-photo-circle-with-lots-of-food-items-94977685.jpg
+burger;Describe the image.;The image shows a lot of food items arranged to fill a circle, including apples, a watermelon, a burger, and sandwiches.;https://www.shutterstock.com/shutterstock/photos/94977685/display_1500/stock-photo-circle-with-lots-of-food-items-94977685.jpg
+sandwiches;Describe the image.;The image shows a lot of food items arranged to fill a circle, including apples, a watermelon, a burger, and sandwiches.;https://www.shutterstock.com/shutterstock/photos/94977685/display_1500/stock-photo-circle-with-lots-of-food-items-94977685.jpg
+croc;What toy animals are in the image?;There is a duck, a crocodile, a pig, and a dog;https://live.staticflickr.com/3643/3561115175_e2bd5a8ff0_b.jpg
+duck;What toy animals are in the image?;There is a duck, a crocodile, a pig, and a dog;https://live.staticflickr.com/3643/3561115175_e2bd5a8ff0_b.jpg
+pig;What toy animals are in the image?;There is a duck, a crocodile, a pig, and a dog;https://live.staticflickr.com/3643/3561115175_e2bd5a8ff0_b.jpg
+dog;What toy animals are in the image?;There is a duck, a crocodile, a pig, and a dog;https://live.staticflickr.com/3643/3561115175_e2bd5a8ff0_b.jpg
