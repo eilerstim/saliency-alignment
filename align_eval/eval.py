@@ -65,29 +65,6 @@ def _build_dataloader(
     return DataLoader(dataset, sampler=sampler, collate_fn=collate_fn, **dl_kwargs)
 
 
-def _find_no_segments_sample(
-    batch: dict, scores: torch.Tensor, dataloader: DataLoader,
-    sampler_idxs: list[int], batch_i: int, bs: int,
-) -> tuple[int, str] | None:
-    """Return ``(image_id, caption)`` of one ``no_segments`` image in this batch.
-
-    A ``no_segments`` image has supervised caption tokens but every
-    ``segment_id`` is -1 (caption has no ``<id: ...>`` brackets). Mapping
-    output position ``b`` back to the dataset assumes no collator drops in
-    this batch — true for COCONut where ``clean_caption`` is rarely empty.
-    """
-    for b in range(scores.shape[0]):
-        if not torch.isnan(scores[b]).all():
-            continue
-        seg_ids = batch["segment_ids"][b][batch["labels"][b] != -100]
-        if seg_ids.shape[0] == 0 or (seg_ids != -1).any(dim=1).any():
-            continue
-        ds_idx = sampler_idxs[batch_i * bs + b]
-        img_id = dataloader.dataset.images[ds_idx]["id"]  # type: ignore[attr-defined]
-        return img_id, dataloader.dataset.captions[img_id]  # type: ignore[attr-defined]
-    return None
-
-
 @hydra.main(version_base="1.3", config_path="../configs", config_name="config")
 def evaluate(cfg: DictConfig) -> None:
     fabric = L.Fabric(
@@ -135,8 +112,6 @@ def evaluate(cfg: DictConfig) -> None:
         nan_pad = lambda n: torch.full(  # noqa: E731
             (n, len(METRIC_NAMES)), float("nan"), device=fabric.device
         )
-        sampler_idxs = list(dataloader.sampler)  # type: ignore[arg-type]
-        no_seg_sample: tuple[int, str] | None = None
 
         local: list[torch.Tensor] = []
         for i, batch in enumerate(dataloader):
@@ -150,10 +125,6 @@ def evaluate(cfg: DictConfig) -> None:
                 outputs.saliency, batch["masks"],
                 batch["segment_ids"], batch["labels"],
             )
-            if no_seg_sample is None:
-                no_seg_sample = _find_no_segments_sample(
-                    batch, scores, dataloader, sampler_idxs, i, bs,
-                )
             if scores.shape[0] < bs:
                 scores = torch.cat([scores, nan_pad(bs - scores.shape[0])], dim=0)
             local.append(scores)
@@ -168,11 +139,6 @@ def evaluate(cfg: DictConfig) -> None:
 
     if fabric.global_rank == 0:
         summary = summarise(per_image.cpu())
-        if no_seg_sample is not None:
-            img_id, caption = no_seg_sample
-            logger.info(
-                "example no_segments: image_id=%s, caption=%r", img_id, caption,
-            )
         logger.info("\n=== Attention alignment metrics ===\n%s", format_table(summary))
 
         out_dir = Path(hydra_wd)
