@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -12,6 +13,23 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
+
+# COCONut PanCap mixes two annotation styles. We only keep ``<N: text>``
+# (colon, 1-indexed) where the bracket ids match mask values directly;
+# the ``<N>text>`` style is 0-indexed and uses a non-standard separator,
+# and colon-style brackets that reference id 0 would target the mask's
+# void/background pixels rather than a real segment.
+_NO_COLON_ANNOTATION_RE = re.compile(r"<\s*[\d,\s]+\s*>")
+_COLON_ID_LIST_RE = re.compile(r"<\s*([\d,\s]+)\s*:")
+
+
+def _has_clean_format(caption: str) -> bool:
+    if _NO_COLON_ANNOTATION_RE.search(caption):
+        return False
+    for m in _COLON_ID_LIST_RE.finditer(caption):
+        if any(int(d) == 0 for d in re.findall(r"\d+", m.group(1))):
+            return False
+    return True
 
 
 class COCONutPanCapDataset(Dataset):
@@ -78,6 +96,7 @@ class COCONutPanCapDataset(Dataset):
         self.captions: dict[int, str] = {}
         skipped_no_caption = 0
         skipped_broken = 0
+        skipped_bad_format = 0
 
         for img in annotations["images"]:
             stem = img["file_name"].rsplit(".", 1)[0]
@@ -87,20 +106,27 @@ class COCONutPanCapDataset(Dataset):
                 continue
 
             caption_filename = f"{stem}.txt"
-            if caption_filename in available_captions:
-                caption_path = self.captions_dir / caption_filename
-                with open(caption_path) as f:
-                    self.captions[img["id"]] = f.read().strip()
-                self.images.append(img)
-            else:
+            if caption_filename not in available_captions:
                 skipped_no_caption += 1
+                continue
 
-        if skipped_no_caption or skipped_broken:
+            caption_path = self.captions_dir / caption_filename
+            with open(caption_path) as f:
+                caption = f.read().strip()
+            if not _has_clean_format(caption):
+                skipped_bad_format += 1
+                continue
+
+            self.captions[img["id"]] = caption
+            self.images.append(img)
+
+        if skipped_no_caption or skipped_broken or skipped_bad_format:
             rank = dist.get_rank() if dist.is_initialized() else 0
             if rank == 0:
                 logger.info(
                     f"Skipped {skipped_no_caption} images with no caption, "
-                    f"{skipped_broken} images due to broken captions."
+                    f"{skipped_broken} images due to broken captions, "
+                    f"{skipped_bad_format} images due to non-strict annotation format."
                 )
 
         # Pre-extract segments_info keyed by image ID
