@@ -48,12 +48,13 @@ class FineTuner(L.LightningModule):
         loss = annotated_out.loss + non_annotated_out.loss
 
         # Calculate auxiliary loss
+        annotated = batch[0]
         auxiliary_loss = self.auxiliary_loss(
-            labels=batch["labels"],
-            segment_ids=batch["segment_ids"],
+            labels=annotated["labels"],
+            segment_ids=annotated["segment_ids"],
             preds=annotated_out.logits,
             saliency=annotated_out.saliency,
-            masks=batch["masks"],
+            masks=annotated["masks"],
         )
 
         # Log relevant metrics
@@ -64,11 +65,12 @@ class FineTuner(L.LightningModule):
             "train/annotated_loss": annotated_out.loss.detach(),
             "train/non_annotated_loss": non_annotated_out.loss.detach(),
         }
+        batch_size = batch[0]["input_ids"].size(0) + batch[1]["input_ids"].size(0)
         self.log_dict(
             log_dict,
             prog_bar=True,
             sync_dist=True,
-            batch_size=batch["input_ids"].size(0),
+            batch_size=batch_size,
         )
 
         return loss + auxiliary_loss
@@ -80,46 +82,47 @@ class FineTuner(L.LightningModule):
 
         # Calculate auxiliary loss
         auxiliary_loss = self.auxiliary_loss(
-            labels=batch["labels"],
-            segment_ids=batch["segment_ids"],
+            labels=annotated["labels"],
+            segment_ids=annotated["segment_ids"],
             preds=annotated_out.logits,
             saliency=annotated_out.saliency,
-            masks=batch["masks"],
+            masks=annotated["masks"],
         )
 
-        # preds = annotated_out.logits.argmax(dim=-1)
-        # labels = batch["labels"]
+        preds = annotated_out.logits.argmax(dim=-1)
+        labels = annotated["labels"]
 
-        # # Shift for next-token prediction
-        # shift_preds = preds[:, :-1]
-        # shift_labels = labels[:, 1:]
+        # Shift for next-token prediction
+        shift_preds = preds[:, :-1]
+        shift_labels = labels[:, 1:]
 
-        # # Ignore padding (-100)
-        # valid_token_mask = shift_labels != -100
+        # Ignore padding (-100)
+        valid_token_mask = shift_labels != -100
 
-        # if valid_token_mask.any():
-        #     accuracy = (
-        #         (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
-        #         .float()
-        #         .mean()
-        #     )
-        # else:
-        #     accuracy = torch.tensor(0.0, device=labels.device)
+        if valid_token_mask.any():
+            accuracy = (
+                (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
+                .float()
+                .mean()
+            )
+        else:
+            accuracy = torch.tensor(0.0, device=labels.device)
 
         # Log relevant metrics
         log_dict = {
             "val/ce_loss": loss,
             "val/auxiliary_loss": auxiliary_loss,
             "val/loss": loss + auxiliary_loss,
-            # "val/accuracy": accuracy,
             "val/annotated_loss": annotated_out.loss,
             "val/non_annotated_loss": non_annotated_out.loss,
+            "val/accuracy": accuracy,
         }
+        batch_size = batch[0]["input_ids"].size(0) + batch[1]["input_ids"].size(0)
         self.log_dict(
             log_dict,
             prog_bar=True,
             sync_dist=True,
-            batch_size=batch["input_ids"].size(0),
+            batch_size=batch_size,
         )
 
     def configure_optimizers(self) -> tuple:
