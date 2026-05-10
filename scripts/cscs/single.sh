@@ -40,11 +40,15 @@ TRAIN_JOBID=$(sbatch --parsable \
     scripts/cscs/arr_train.sh \
     "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE")
 
-# # ---- Submit evaluation job dependent on training ----
-# sbatch --dependency=afterok:${TRAIN_JOBID} \
-#     scripts/cscs/arr_eval.sh "$RUN_ID"
+# ---- Submit evaluation jobs dependent on training ----
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/arr_eval.sh "$RUN_ID"
 
-# sbatch --dependency=afterok:${TRAIN_JOBID} \
-#     scripts/cscs/count/eval.sh "$RUN_ID" "false"
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/count/eval.sh "$RUN_ID" "false"
 
-# echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/arr_align_eval.sh \
+    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE"
+
+echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"
