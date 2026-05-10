@@ -86,8 +86,11 @@ def per_image_scores(
     masks: list[Tensor],
     segment_ids: Int[Tensor, "B S M"],
     labels: Int[Tensor, "B S"],
+    image_ids: Tensor | None = None,
 ) -> tuple[
-    Float[Tensor, "B 3"], dict[str, int], tuple[list[int], list[int]] | None
+    Float[Tensor, "B 3"],
+    dict[str, int],
+    tuple[int | None, list[int], list[int]] | None,
 ]:
     """Compute per-image (AMR, AP, NSS) by NaN-mean over supervised tokens.
 
@@ -96,14 +99,15 @@ def per_image_scores(
     against. Rows for images with no supervised tokens stay NaN.
 
     Returns the score tensor, per-stage drop counts, and a sample of
-    ``(caption_seg_ids, mask_seg_ids)`` from the first ``no_mask_overlap``
-    image in the batch (or ``None``) for diagnostic logging.
+    ``(image_id, caption_seg_ids, mask_seg_ids)`` from the first
+    ``no_mask_overlap`` image in the batch (or ``None``) for diagnostic
+    logging. ``image_id`` is ``None`` if ``image_ids`` was not provided.
     """
     device = labels.device
     batch_size = saliency.batch_size
     scores = torch.full((batch_size, len(METRIC_NAMES)), float("nan"), device=device)
     drops = {"no_supervised_tokens": 0, "no_segments": 0, "no_mask_overlap": 0}
-    sample: tuple[list[int], list[int]] | None = None
+    sample: tuple[int | None, list[int], list[int]] | None = None
 
     for b in range(batch_size):
         mask = masks[b].to(device)
@@ -148,7 +152,9 @@ def per_image_scores(
         if not token_mask.any():
             drops["no_mask_overlap"] += 1
             if sample is None:
+                img_id = int(image_ids[b]) if image_ids is not None else None
                 sample = (
+                    img_id,
                     seg_ids[valid].unique().cpu().tolist(),
                     mask.unique().cpu().tolist(),
                 )

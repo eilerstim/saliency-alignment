@@ -118,7 +118,7 @@ def evaluate(cfg: DictConfig) -> None:
         n_no_supervised = 0
         n_no_segments = 0
         n_no_mask_overlap = 0
-        overlap_sample: tuple[list[int], list[int]] | None = None
+        overlap_sample: tuple[int | None, list[int], list[int]] | None = None
         for i, batch in enumerate(dataloader):
             if batch is None:
                 local.append(nan_pad(bs))
@@ -130,6 +130,7 @@ def evaluate(cfg: DictConfig) -> None:
             scores, drops, sample = per_image_scores(
                 outputs.saliency, batch["masks"],
                 batch["segment_ids"], batch["labels"],
+                image_ids=batch.get("image_ids"),
             )
             n_collator_drop += bs - scores.shape[0]
             n_no_supervised += drops["no_supervised_tokens"]
@@ -174,10 +175,10 @@ def evaluate(cfg: DictConfig) -> None:
             n_total, n_total - n_processed, n_col, n_sup, n_seg, n_olp, n_kept,
         )
         if overlap_sample is not None:
-            cap_segs, mask_segs = overlap_sample
+            img_id, cap_segs, mask_segs = overlap_sample
             logger.info(
-                "  example no_mask_overlap: caption refs %s, mask has %s",
-                cap_segs, mask_segs,
+                "  example no_mask_overlap: image_id=%s, caption refs %s, mask has %s",
+                img_id, cap_segs, mask_segs,
             )
         logger.info("\n=== Attention alignment metrics ===\n%s", format_table(summary))
 
