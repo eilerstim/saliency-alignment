@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 # COCONut PanCap mixes two annotation styles. We only keep ``<N: text>``
 # (colon, 1-indexed) where the bracket ids match mask values directly;
 # the ``<N>text>`` style is 0-indexed and uses a non-standard separator,
-# and colon-style brackets that reference id 0 would target the mask's
-# void/background pixels rather than a real segment.
+# colon-style brackets that reference id 0 would target the mask's
+# void/background pixels rather than a real segment, and unannotated
+# pure-prose captions contribute nothing to the alignment loss / metric.
 _NO_COLON_ANNOTATION_RE = re.compile(r"<\s*[\d,\s]+\s*>")
 _COLON_ID_LIST_RE = re.compile(r"<\s*([\d,\s]+)\s*:")
 
@@ -26,10 +27,12 @@ _COLON_ID_LIST_RE = re.compile(r"<\s*([\d,\s]+)\s*:")
 def _has_clean_format(caption: str) -> bool:
     if _NO_COLON_ANNOTATION_RE.search(caption):
         return False
+    has_annotation = False
     for m in _COLON_ID_LIST_RE.finditer(caption):
         if any(int(d) == 0 for d in re.findall(r"\d+", m.group(1))):
             return False
-    return True
+        has_annotation = True
+    return has_annotation
 
 
 class COCONutPanCapDataset(Dataset):
