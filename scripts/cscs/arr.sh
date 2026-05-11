@@ -7,11 +7,11 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-18%4
-# Array layout (kl x lambda x freeze cross-product, plus default-per-freeze, plus baseline):
-#   0..14  = kl x {5 lambdas} x {3 freezes}, index = LAMBDA_IDX*NUM_FREEZES + FREEZE_IDX
-#   15..17 = default x {3 freezes}
-#   18     = baseline eval only
+#SBATCH --array=0-6%4
+# Array layout (kl x single lambda x freeze, plus default-per-freeze, plus baseline):
+#   0..2 = kl x lambda=0.5 x {3 freezes}
+#   3..5 = default x {3 freezes}
+#   6    = baseline eval only
 
 set -euo pipefail
 mkdir -p logs
@@ -23,7 +23,7 @@ MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
 CRITERION="kl"
-LAMBDAS=(0.0001 0.001 0.01 0.1 1.0)
+LAMBDAS=(0.5)
 FREEZE_NAMES=("lm_only" "proj_only" "lm_proj")
 FREEZE_OVERRIDES=(
     "model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
