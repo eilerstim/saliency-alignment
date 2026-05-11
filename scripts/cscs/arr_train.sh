@@ -18,6 +18,7 @@ RUN_ID="$1"
 CRITERION="$2"
 LAMBDA="$3"
 MODEL_SIZE="$4"
+FREEZE_OVERRIDE="${5:-}"
 
 export CRITERION LAMBDA MODEL_SIZE
 
@@ -29,12 +30,14 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
 
 echo "Beginning finetuning of ${RUN_ID} at $(date)"
-echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE}"
+echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} FREEZE_OVERRIDE=${FREEZE_OVERRIDE}"
 
+# FREEZE_OVERRIDE is intentionally unquoted so multiple Hydra overrides split into separate args.
 srun $PROJECT_DIR/.venv/bin/python -m finetune \
     run_id="${RUN_ID}" \
     loss="${CRITERION}" \
     loss.weight="${LAMBDA}" \
-    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf" \
+    ${FREEZE_OVERRIDE}
 
 echo "Finished finetuning of ${RUN_ID} at $(date)"
