@@ -14,12 +14,15 @@
 
 set -euo pipefail
 
-RUN_ID="$1"
-CRITERION="$2"
-LAMBDA="$3"
-MODEL_SIZE="$4"
+MODEL_NAME="$1"
 
-export CRITERION LAMBDA MODEL_SIZE
+# if second arg is set to true, it's a hf model name
+# Otherwise, it's a run_id under models/
+if [ "${2:-false}" = "true" ]; then
+    MODEL_PATH="${MODEL_NAME}"
+else
+    MODEL_PATH="${PROJECT_DIR}/models/${MODEL_NAME}"
+fi
 
 source ./scripts/cscs/env.sh
 
@@ -28,12 +31,10 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
 
-echo "Beginning alignment eval of ${RUN_ID} at $(date)"
+echo "Beginning alignment eval of ${MODEL_NAME} at $(date)"
 
 srun $PROJECT_DIR/.venv/bin/python -m align_eval.eval \
-    run_id="${RUN_ID}" \
-    loss="${CRITERION}" \
-    loss.weight="${LAMBDA}" \
-    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+    run_id="${MODEL_NAME//\//__}" \
+    model_path="${MODEL_PATH}"
 
-echo "Finished alignment eval of ${RUN_ID} at $(date)"
+echo "Finished alignment eval of ${MODEL_NAME} at $(date)"
