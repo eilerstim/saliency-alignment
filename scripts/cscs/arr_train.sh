@@ -17,9 +17,9 @@ set -euo pipefail
 RUN_ID="$1"
 CRITERION="$2"
 LAMBDA="$3"
-MODEL_SIZE="$4"
+MODEL="$4"
 
-export CRITERION LAMBDA MODEL_SIZE
+export CRITERION LAMBDA MODEL
 
 source ./scripts/cscs/env.sh
 
@@ -28,13 +28,16 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
 
+export CUDA_LAUNCH_BLOCKING=1 
+export HYDRA_FULL_ERROR=1
+
 echo "Beginning finetuning of ${RUN_ID} at $(date)"
-echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE}"
+echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL=${MODEL}"
 
 srun $PROJECT_DIR/.venv/bin/python -m finetune \
     run_id="${RUN_ID}" \
     loss="${CRITERION}" \
     loss.weight="${LAMBDA}" \
-    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+    model="${MODEL}"
 
 echo "Finished finetuning of ${RUN_ID} at $(date)"

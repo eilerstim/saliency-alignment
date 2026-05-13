@@ -60,11 +60,16 @@ def load_lt_state(strategy: str, trainer: L.Trainer, model: PreTrainedModel):
             # Handle potential double-wrapping in newer Lightning/FSDP versions
             # Ensure we only strip if it specifically wraps LLaVA bases
             parts = k_stripped.split(".")
-            if len(parts) > 1 and parts[0] == "model" and parts[1] in [
-                "language_model",
-                "vision_tower",
-                "multi_modal_projector",
-            ]:
+            if (
+                len(parts) > 1
+                and parts[0] == "model"
+                and parts[1]
+                in [
+                    "language_model",
+                    "vision_tower",
+                    "multi_modal_projector",
+                ]
+            ):
                 k_stripped = k_stripped.removeprefix("model.")
             hf_state[k_stripped] = v
 

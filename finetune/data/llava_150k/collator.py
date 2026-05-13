@@ -3,6 +3,37 @@ from transformers import ProcessorMixin
 from finetune.data.coconut.collator import make_collate_fn as make_coconut_collate_fn
 
 
+def llava_to_chat_messages(conversations: list[dict]) -> list[dict]:
+    role_map = {
+        "human": "user",
+        "gpt": "assistant",
+    }
+
+    messages = []
+
+    for turn in conversations:
+        role = role_map[turn["from"]]
+        value = turn["value"]
+
+        if role == "user" and "<image>" in value:
+            text = value.replace("<image>", "").strip()
+
+            content = [{"type": "image"}]
+            if text:
+                content.append({"type": "text", "text": text})
+        else:
+            content = value
+
+        messages.append(
+            {
+                "role": role,
+                "content": content,
+            }
+        )
+
+    return messages
+
+
 def make_collate_fn(processor: ProcessorMixin, image_path: str):
     """Create a collate function for LLaVA-Instruct-150K training.
 
@@ -38,9 +69,14 @@ def make_collate_fn(processor: ProcessorMixin, image_path: str):
             if "mask" in example:
                 annotated.append(example)
             else:
-                path_to_image = f"{image_path}/{example['image']}"
+                path_to_image = f"{image_path}/COCO_train2014_{example['image']}"
                 non_annotated_images.append(path_to_image)
-                non_annotated_conversations.append(example["conversations"])
+                conversation = processor.apply_chat_template(
+                    llava_to_chat_messages(example["conversations"]),
+                    add_generation_prompt=False,
+                    tokenize=False,
+                )
+                non_annotated_conversations.append(conversation)
 
         if non_annotated_images and non_annotated_conversations:
             non_annotated_batch = processor(

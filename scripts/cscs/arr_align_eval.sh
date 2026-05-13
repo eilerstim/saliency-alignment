@@ -17,9 +17,9 @@ set -euo pipefail
 RUN_ID="$1"
 CRITERION="$2"
 LAMBDA="$3"
-MODEL_SIZE="$4"
+MODEL="$4"
 
-export CRITERION LAMBDA MODEL_SIZE
+export CRITERION LAMBDA MODEL
 
 source ./scripts/cscs/env.sh
 
@@ -34,6 +34,6 @@ srun $PROJECT_DIR/.venv/bin/python -m align_eval.eval \
     run_id="${RUN_ID}" \
     loss="${CRITERION}" \
     loss.weight="${LAMBDA}" \
-    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+    model="${MODEL}"
 
 echo "Finished alignment eval of ${RUN_ID} at $(date)"

@@ -17,8 +17,7 @@ def build_model(cfg: DictConfig) -> tuple[PreTrainedModel, ProcessorMixin]:
     """Instantiate model and processor."""
 
     if hasattr(cfg, "instruction_tuned") and not cfg.instruction_tuned:
-
-        config = LlavaConfig.from_pretrained(cfg.base_arch)
+        config = LlavaConfig.from_pretrained(cfg.name)
         model = LlavaForConditionalGeneration(config)
         processor = AutoProcessor.from_pretrained(cfg.base_arch)
 
@@ -27,7 +26,9 @@ def build_model(cfg: DictConfig) -> tuple[PreTrainedModel, ProcessorMixin]:
             dtype=cfg.dtype,
         )
 
-        llm.resize_token_embeddings(config.vocab_size)
+        llm.resize_token_embeddings(len(processor.tokenizer))
+        model.model.language_model.resize_token_embeddings(len(processor.tokenizer))
+        model.resize_token_embeddings(len(processor.tokenizer)) 
 
         model.model.language_model.load_state_dict(
             llm.model.state_dict(),
@@ -57,13 +58,11 @@ def build_model(cfg: DictConfig) -> tuple[PreTrainedModel, ProcessorMixin]:
             "model.mm_projector.2.bias": "linear_2.bias",
         }
 
-        clean_state = {
-            rename[k]: v
-            for k, v in projector_state.items()
-            if k in rename
-        }
+        clean_state = {rename[k]: v for k, v in projector_state.items() if k in rename}
 
         model.model.multi_modal_projector.load_state_dict(clean_state)
+
+        model.to(dtype=torch.bfloat16)
 
         model.tie_weights()
 
@@ -78,7 +77,7 @@ def build_model(cfg: DictConfig) -> tuple[PreTrainedModel, ProcessorMixin]:
     else:
         for module in cfg.freeze:
             getattr(model.model, module).requires_grad_(False)
-            
+
     for module in cfg.unfreeze:
         getattr(model.model, module).requires_grad_(True)
 
@@ -88,3 +87,18 @@ def build_model(cfg: DictConfig) -> tuple[PreTrainedModel, ProcessorMixin]:
         )
 
     return model, processor
+
+
+if __name__ == "__main__":
+    import hydra
+    from omegaconf import DictConfig
+
+    @hydra.main(
+        version_base="1.3",
+        config_path="../configs/model",
+        config_name="llava-pretrain-vicuna-7b",
+    )
+    def main(cfg: DictConfig):
+        model, processor = build_model(cfg)
+
+    main()

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import hydra
 import lightning as L
@@ -9,7 +10,6 @@ from hydra.core.hydra_config import HydraConfig
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
-from pathlib import Path
 
 from vl_saliency import Saliency
 

@@ -20,9 +20,18 @@ args = parser.parse_args()
 
 models_to_run = [
     ("base", "llava-hf/llava-1.5-7b-hf"),
-    ("lm_only", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_only"),
-    ("proj_only", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_proj_only"),
-    ("lm_proj", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_proj")
+    (
+        "lm_only",
+        "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_only",
+    ),
+    (
+        "proj_only",
+        "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_proj_only",
+    ),
+    (
+        "lm_proj",
+        "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_proj",
+    ),
 ]
 
 transformers.utils.logging.set_verbosity_error()

@@ -25,22 +25,22 @@ dataset:
 collator:
   _target_: finetune.data.llava_150k.collator.make_collate_fn
   # processor will be passed at runtime via partial
-  image_path: ${..train.images_dir}
+  image_path: ${..images_dir}/train2014
 
 eval_collator:
   _target_: finetune.data.llava_150k.collator.make_collate_fn
   # processor will be passed at runtime via partial
-  image_path: ${..train.images_dir}
+  image_path: ${..images_dir}/train2014
 
 # Train/val splits
 train:
   split: train
-  name: train2014
+  name: train2017
   images_dir: ${..images_dir}/${.name}
   url: http://images.cocodataset.org/zips/train2014.zip
 
 validation:
   split: validation
-  name: val2014
+  name: val2017
   images_dir: ${..images_dir}/${.name}
   url: http://images.cocodataset.org/zips/val2014.zip
