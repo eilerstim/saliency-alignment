@@ -1,6 +1,8 @@
 from transformers import ProcessorMixin
 
+from finetune.data.coconut.collator import _compute_suffix_tokens
 from finetune.data.coconut.collator import make_collate_fn as make_coconut_collate_fn
+from finetune.data.utils import find_sequence
 
 
 def llava_to_chat_messages(conversations: list[dict]) -> list[dict]:
@@ -45,6 +47,8 @@ def make_collate_fn(processor: ProcessorMixin, image_path: str):
         processor: Vision-language model processor.
         image_path: Path to the image directory.
     """
+    coconut_collate_fn = make_coconut_collate_fn(processor)
+    suffix_tokens = _compute_suffix_tokens(processor)
 
     def collate_fn(examples: list[dict]) -> tuple[dict | None, dict | None]:
         """Collate function for LLaVA-Instruct-150K training.
@@ -87,11 +91,27 @@ def make_collate_fn(processor: ProcessorMixin, image_path: str):
                 max_length=None,
                 return_tensors="pt",
             )
+
+            input_ids = non_annotated_batch["input_ids"]
+
+            labels = input_ids.clone()
+            batch_size, seq_len = input_ids.shape
+            labels[labels == processor.tokenizer.pad_token_id] = -100
+
+            for i in range(batch_size):
+                caption_start = find_sequence(input_ids[i], suffix_tokens) + len(
+                    suffix_tokens
+                )
+
+                # Mask prompt tokens
+                labels[i, :caption_start] = -100
+
+            non_annotated_batch["labels"] = labels
         else:
             non_annotated_batch = None
 
         return (
-            make_coconut_collate_fn(processor)(annotated) if annotated else None,
+            coconut_collate_fn(annotated) if annotated else None,
             non_annotated_batch,
         )
 
