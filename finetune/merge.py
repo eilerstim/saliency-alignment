@@ -48,10 +48,7 @@ def main() -> None:
     merged.save_pretrained(str(out_dir))
     AutoProcessor.from_pretrained(str(adapter_dir)).save_pretrained(str(out_dir))
 
-    # Mirror finetune.py's vLLM-compatibility fix on the merged dir's
-    # tokenizer config. Idempotent in modern transformers but guards
-    # against any auto-class or version drift that would leave a value
-    # vLLM doesn't recognise.
+    # Mirror finetune.py's vLLM-compatibility tokenizer_class fix.
     tok_config_path = out_dir / "tokenizer_config.json"
     tok_config = json.loads(tok_config_path.read_text())
     tok_config["tokenizer_class"] = "LlamaTokenizer"

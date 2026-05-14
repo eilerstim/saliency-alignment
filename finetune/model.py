@@ -35,11 +35,8 @@ def build_model(
                 p.data = p.data.to(dtype)
 
         if cfg.gradient_checkpointing:
-            # Frozen embeddings produce activations that don't track grad,
-            # which silently breaks gradient flow back to LoRA adapters
-            # through checkpointed transformer blocks. This hook flips
-            # requires_grad on the embedding output so the checkpoint
-            # boundary sees grad-tracking inputs.
+            # Gradient checkpointing requires the embedding output to track
+            # grad; otherwise gradients never reach the LoRA adapters.
             model.enable_input_require_grads()
     else:
         if "all" in cfg.freeze:
