@@ -26,6 +26,13 @@ def build_model(
         lora_kwargs = OmegaConf.to_container(lora_cfg, resolve=True)
         lora_kwargs.pop("enabled")
         model = get_peft_model(model, LoraConfig(**lora_kwargs))
+        if cfg.gradient_checkpointing:
+            # Frozen embeddings produce activations that don't track grad,
+            # which silently breaks gradient flow back to LoRA adapters
+            # through checkpointed transformer blocks. This hook flips
+            # requires_grad on the embedding output so the checkpoint
+            # boundary sees grad-tracking inputs.
+            model.enable_input_require_grads()
     else:
         if "all" in cfg.freeze:
             model.requires_grad_(False)
