@@ -37,14 +37,6 @@ def finetune(cfg: DictConfig):
     # Prepare model and processor as defined in config
     model, processor = build_model(cfg.model, cfg.lora)
 
-    if rank == 0:
-        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        total = sum(p.numel() for p in model.parameters())
-        logger.info(
-            "Trainable params: %s / %s (%.4f%%)",
-            f"{trainable:,}", f"{total:,}", 100 * trainable / total,
-        )
-
     # Loggers
     loggers = [CSVLogger(save_dir=f"{hydra_wd}/logs", name="training_logs")]
     if cfg.wandb:
