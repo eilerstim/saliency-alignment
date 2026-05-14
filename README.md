@@ -59,16 +59,18 @@ When LoRA is enabled, the model's `freeze` / `unfreeze` settings are ignored:
 PEFT freezes the base model and trains only the adapter weights. To also train
 specific base modules in tandem, list them under `lora.modules_to_save`.
 
-Only the adapter weights are written to the checkpoint directory. To run
-inference, reload the base model and attach the adapter:
+Only the adapter weights are written to the checkpoint directory. The
+in-repo eval entry points (`align_eval.eval`, `scripts/python/viz.py`,
+`scripts/python/compare_drift.py`) auto-detect adapter checkpoints and
+merge the adapter back into the base model on load. The vLLM-backed
+benchmarks (`scripts/cscs/arr_eval.sh`, `scripts/cscs/count/eval.sh`)
+materialize a merged checkpoint at `<adapter_dir>-merged` on first run
+and reuse it on subsequent runs.
 
-```python
-from peft import PeftModel
-from transformers import AutoModelForImageTextToText, AutoProcessor
+To merge an adapter into a full checkpoint manually:
 
-base = AutoModelForImageTextToText.from_pretrained("llava-hf/llava-1.5-7b-hf")
-model = PeftModel.from_pretrained(base, "<checkpoint_dir>")
-processor = AutoProcessor.from_pretrained("<checkpoint_dir>")
+```bash
+uv run python -m finetune.merge <adapter_dir> --output <out_dir>
 ```
 
 ## Logging and Monitoring

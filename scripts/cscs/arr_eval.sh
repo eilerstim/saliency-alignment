@@ -26,6 +26,18 @@ else
     MODEL_PATH="models/${MODEL_NAME}"
 fi
 
+# vLLM can't load a bare LoRA adapter directory, so merge it into a full
+# HF checkpoint up front and point lmms_eval at the merged path. The
+# merged directory is cached next to the adapter so repeated runs reuse it.
+if [ -f "${MODEL_PATH}/adapter_config.json" ]; then
+    MERGED_PATH="${MODEL_PATH}-merged"
+    if [ ! -d "${MERGED_PATH}" ]; then
+        echo "LoRA adapter detected; merging ${MODEL_PATH} -> ${MERGED_PATH}"
+        $PROJECT_DIR/.venv/bin/python -m finetune.merge "${MODEL_PATH}" --output "${MERGED_PATH}"
+    fi
+    MODEL_PATH="${MERGED_PATH}"
+fi
+
 echo "Starting LM-eval of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 

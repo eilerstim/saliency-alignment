@@ -1,11 +1,14 @@
 import argparse
 import csv
 import re
+
 import requests
-from PIL import Image
 import torch
 import transformers
+from PIL import Image
 from transformers import AutoProcessor, LlavaForConditionalGeneration
+
+from finetune.model import load_pretrained
 from vl_saliency import Saliency
 from vl_saliency.select import regex
 
@@ -31,8 +34,9 @@ with open(args.csv_file, newline="") as f:
 
 for model_type, model_path in models_to_run:
     print(f"Loading {model_type} model...")
-    model = LlavaForConditionalGeneration.from_pretrained(
+    model = load_pretrained(
         model_path,
+        model_cls=LlavaForConditionalGeneration,
         dtype=torch.float32,
         attn_implementation="eager",
     ).to(device)

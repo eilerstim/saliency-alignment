@@ -37,7 +37,8 @@ import re
 from pathlib import Path
 
 import torch
-from transformers import AutoModelForImageTextToText
+
+from finetune.model import load_pretrained
 
 logger = logging.getLogger(__name__)
 
@@ -148,9 +149,14 @@ def component_drift(
 
 
 def load_model(path: str) -> torch.nn.Module:
-    """Load a model from disk or HF hub, on CPU, in fp32."""
+    """Load a model from disk or HF hub, on CPU, in fp32.
+
+    LoRA checkpoints are detected by ``load_pretrained`` and merged into
+    the base, so weight-by-weight drift comparisons against the base see
+    the effective fine-tuned weights.
+    """
     logger.info("Loading %s ...", path)
-    model = AutoModelForImageTextToText.from_pretrained(
+    model = load_pretrained(
         path, torch_dtype=torch.float32, low_cpu_mem_usage=True
     )
     model.eval()
