@@ -35,6 +35,6 @@ echo "Beginning alignment eval of ${MODEL_NAME} at $(date)"
 
 srun $PROJECT_DIR/.venv/bin/python -m align_eval.eval \
     run_id="${MODEL_NAME//\//__}" \
-    model_path="${MODEL_PATH}"
+    +model_path="${MODEL_PATH}"
 
 echo "Finished alignment eval of ${MODEL_NAME} at $(date)"
