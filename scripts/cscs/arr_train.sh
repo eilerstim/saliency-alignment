@@ -40,4 +40,15 @@ srun $PROJECT_DIR/.venv/bin/python -m finetune \
     model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf" \
     ${EXTRA_OVERRIDES}
 
+# If we trained with LoRA, materialize a merged HF checkpoint so the
+# downstream eval jobs can consume it directly without each having to
+# do their own merge. Sequential — runs once, before any eval job's
+# afterok dependency fires.
+MODEL_DIR="${PROJECT_DIR}/models/${RUN_ID}"
+if [ -f "${MODEL_DIR}/adapter_config.json" ]; then
+    echo "Merging LoRA adapter for ${RUN_ID} at $(date)"
+    $PROJECT_DIR/.venv/bin/python -m finetune.merge \
+        "${MODEL_DIR}" --output "${MODEL_DIR}-merged"
+fi
+
 echo "Finished finetuning of ${RUN_ID} at $(date)"

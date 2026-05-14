@@ -59,13 +59,14 @@ When LoRA is enabled, the model's `freeze` / `unfreeze` settings are ignored:
 PEFT freezes the base model and trains only the adapter weights. To also train
 specific base modules in tandem, list them under `lora.modules_to_save`.
 
-Only the adapter weights are written to the checkpoint directory. The
-in-repo eval entry points (`align_eval.eval`, `scripts/python/viz.py`,
-`scripts/python/compare_drift.py`) auto-detect adapter checkpoints and
-merge the adapter back into the base model on load. The vLLM-backed
-benchmarks (`scripts/cscs/arr_eval.sh`, `scripts/cscs/count/eval.sh`)
-materialize a merged checkpoint at `<adapter_dir>-merged` on first run
-and reuse it on subsequent runs.
+Training writes only the adapter weights to `models/<run_id>/`. The
+SLURM training script (`scripts/cscs/arr_train.sh`) immediately follows
+with a merge step that materializes a full HF checkpoint at
+`models/<run_id>-merged/`, which the downstream eval jobs prefer
+automatically. The Python eval entry points (`align_eval.eval`,
+`scripts/python/viz.py`, `scripts/python/compare_drift.py`) also accept
+the bare adapter directory directly — they merge in-process via
+`load_pretrained`.
 
 To merge an adapter into a full checkpoint manually:
 

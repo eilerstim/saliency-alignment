@@ -26,9 +26,8 @@ else
     MODEL_PATH="${PROJECT_DIR}/models/${MODEL_NAME}"
 fi
 
-# vLLM can't load a bare LoRA adapter directory, so merge it into a full
-# HF checkpoint up front and point the evaluator at the merged path.
-source ./scripts/cscs/merge_lora.sh
+# Prefer the merged sibling if arr_train.sh produced one (LoRA runs).
+[ -d "${MODEL_PATH}-merged" ] && MODEL_PATH="${MODEL_PATH}-merged"
 
 source ./scripts/cscs/count/env.sh
 
