@@ -49,30 +49,14 @@ uv run -m finetune model=llava-v1.6-mistral-7b-hf data.dataloader_kwargs.batch_s
 The framework supports both full fine-tuning (default) and parameter-efficient
 fine-tuning via [LoRA](https://arxiv.org/abs/2106.09685) (Low-Rank Adaptation),
 powered by [PEFT](https://github.com/huggingface/peft). LoRA settings live in
-`configs/lora.yaml`; enable and tune them on the command line:
-
-```bash
-uv run -m finetune lora.enabled=true lora.r=16 lora.lora_alpha=32
-```
-
-When LoRA is enabled, the model's `freeze` / `unfreeze` settings are ignored:
-PEFT freezes the base model and trains only the adapter weights. To also train
-specific base modules in tandem, list them under `lora.modules_to_save`.
+`configs/lora.yaml`. When LoRA is enabled, the model's `freeze` / `unfreeze` 
+settings are ignored: PEFT freezes the base model and trains only the adapter 
+weights.
 
 Training writes only the adapter weights to `models/<run_id>/`. The
 SLURM training script (`scripts/cscs/arr_train.sh`) immediately follows
 with a merge step that materializes a full HF checkpoint at
-`models/<run_id>-merged/`, which the downstream eval jobs prefer
-automatically. The Python eval entry points (`align_eval.eval`,
-`scripts/python/viz.py`, `scripts/python/compare_drift.py`) also accept
-the bare adapter directory directly — they merge in-process via
-`load_pretrained`.
-
-To merge an adapter into a full checkpoint manually:
-
-```bash
-uv run python -m finetune.merge <adapter_dir> --output <out_dir>
-```
+`models/<run_id>-merged/`.
 
 ## Logging and Monitoring
 
