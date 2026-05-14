@@ -3,6 +3,7 @@ defaults:
   - optim: adamw
   - data: coconut
   - loss: kl
+  - lora: none
   - trainer
   - dataloader
   - _self_

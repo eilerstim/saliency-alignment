@@ -44,6 +44,40 @@ The finetuning process can be customized using the configuration files located i
 uv run -m finetune model=llava-v1.6-mistral-7b-hf data.dataloader_kwargs.batch_size=4
 ```
 
+## LoRA Fine-tuning
+
+The framework supports both full fine-tuning (default) and parameter-efficient
+fine-tuning via [LoRA](https://arxiv.org/abs/2106.09685) (Low-Rank Adaptation),
+powered by [PEFT](https://github.com/huggingface/peft).
+
+Select the LoRA preset from the `configs/lora/` group:
+
+```bash
+uv run -m finetune lora=default
+```
+
+Override individual LoRA parameters from the command line:
+
+```bash
+uv run -m finetune lora=default lora.r=16 lora.lora_alpha=32
+```
+
+When LoRA is enabled, the model's `freeze` / `unfreeze` settings are ignored:
+PEFT freezes the base model and trains only the adapter weights. To also train
+specific base modules in tandem, list them under `lora.modules_to_save`.
+
+Only the adapter weights are written to the checkpoint directory. To run
+inference, reload the base model and attach the adapter:
+
+```python
+from peft import PeftModel
+from transformers import AutoModelForImageTextToText, AutoProcessor
+
+base = AutoModelForImageTextToText.from_pretrained("llava-hf/llava-1.5-7b-hf")
+model = PeftModel.from_pretrained(base, "<checkpoint_dir>")
+processor = AutoProcessor.from_pretrained("<checkpoint_dir>")
+```
+
 ## Logging and Monitoring
 
 We use [Weights & Biases](https://wandb.ai/) for logging and monitoring the finetuning process. Make sure to set up your W&B account and configure the API key before starting the finetuning.
