@@ -1,12 +1,5 @@
 # @package lora
-# LoRA (Low-Rank Adaptation) configuration for parameter-efficient fine-tuning.
-#
-# Set `lora.enabled=true` (or edit below) to use LoRA. When enabled, the
-# model's `freeze` / `unfreeze` settings are ignored: PEFT freezes the base
-# model and trains only the adapter weights. To additionally train specific
-# base modules in tandem, list them under `modules_to_save`.
-#
-# All non-`enabled` fields are forwarded to `peft.LoraConfig`.
+# Fields other than `enabled` are forwarded to peft.LoraConfig.
 enabled: false
 
 r: 8
@@ -14,7 +7,4 @@ lora_alpha: 16
 lora_dropout: 0.05
 bias: "none"
 task_type: CAUSAL_LM
-
-# Target the language model's self-attention and MLP projections by default,
-# leaving the vision tower and projector untouched.
 target_modules: ".*language_model\\.layers\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
