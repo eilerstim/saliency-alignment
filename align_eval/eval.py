@@ -31,6 +31,7 @@ from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from omegaconf import DictConfig, OmegaConf
+from peft import PeftConfig, PeftModel
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
@@ -88,9 +89,25 @@ def evaluate(cfg: DictConfig) -> None:
 
     # Eager attention is required for vl_saliency's hook-based extractor.
     # Match the bf16 training precision so metrics see the same numerics.
-    model = AutoModelForImageTextToText.from_pretrained(
-        model_path, dtype=cfg.model.dtype, attn_implementation="eager"
-    )
+    # LoRA checkpoints only store the adapter; load the base model and merge
+    # the adapter back in so Saliency hooks see the original module structure.
+    if (Path(model_path) / "adapter_config.json").is_file():
+        peft_config = PeftConfig.from_pretrained(model_path)
+        if fabric.global_rank == 0:
+            logger.info(
+                "LoRA adapter detected; loading base model: %s",
+                peft_config.base_model_name_or_path,
+            )
+        base = AutoModelForImageTextToText.from_pretrained(
+            peft_config.base_model_name_or_path,
+            dtype=cfg.model.dtype,
+            attn_implementation="eager",
+        )
+        model = PeftModel.from_pretrained(base, model_path).merge_and_unload()
+    else:
+        model = AutoModelForImageTextToText.from_pretrained(
+            model_path, dtype=cfg.model.dtype, attn_implementation="eager"
+        )
     processor = AutoProcessor.from_pretrained(model_path)
     model.eval()
     model.requires_grad_(False)

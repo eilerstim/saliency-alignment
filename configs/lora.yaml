@@ -15,6 +15,6 @@ lora_dropout: 0.05
 bias: "none"
 task_type: CAUSAL_LM
 
-# Target only the language model's self-attention projections by default,
+# Target the language model's self-attention and MLP projections by default,
 # leaving the vision tower and projector untouched.
-target_modules: ".*language_model\\.layers\\..*\\.(q_proj|k_proj|v_proj|o_proj)"
+target_modules: ".*language_model\\.layers\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
