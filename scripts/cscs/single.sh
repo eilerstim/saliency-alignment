@@ -14,6 +14,10 @@ mkdir -p logs
 # If EVAL_ONLY is set to true, only run evaluation on trained models
 export EVAL_ONLY=${EVAL_ONLY:-false}
 
+# If USE_LORA is set to true, train with PEFT/LoRA instead of full fine-tuning.
+# Downstream eval scripts auto-detect adapter checkpoints and merge them.
+export USE_LORA=${USE_LORA:-false}
+
 MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
@@ -22,6 +26,11 @@ LAMBDA=0.5
 RUN_ID_SUFFIX="lm_only"
 
 RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}${RUN_ID_SUFFIX:+_${RUN_ID_SUFFIX}}"
+
+EXTRA_OVERRIDES=""
+if [ "${USE_LORA}" = "true" ]; then
+    EXTRA_OVERRIDES="lora.enabled=true"
+fi
 
 echo "Submitting jobs for ${RUN_ID} at $(date)"
 
@@ -37,7 +46,7 @@ fi
 # ---- Submit training job ----
 TRAIN_JOBID=$(sbatch --parsable \
     scripts/cscs/arr_train.sh \
-    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE")
+    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE" "$EXTRA_OVERRIDES")
 
 # ---- Submit evaluation jobs dependent on training ----
 sbatch --dependency=afterok:${TRAIN_JOBID} \
