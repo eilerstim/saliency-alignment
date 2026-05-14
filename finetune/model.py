@@ -26,6 +26,19 @@ def build_model(
         lora_kwargs = OmegaConf.to_container(lora_cfg, resolve=True)
         lora_kwargs.pop("enabled")
         model = get_peft_model(model, LoraConfig(**lora_kwargs))
+
+        # PEFT initializes LoRA adapter weights in fp32 by default. With a
+        # bf16 base model under FSDP, the resulting fp32/bf16 mix inside
+        # each transformer block trips FSDP's "Must flatten tensors with
+        # uniform dtype" check during auto-wrap. Cast the (trainable)
+        # adapter params to the (frozen) base dtype to match.
+        base_dtype = next(
+            p.dtype for p in model.parameters() if not p.requires_grad
+        )
+        for p in model.parameters():
+            if p.requires_grad:
+                p.data = p.data.to(base_dtype)
+
         if cfg.gradient_checkpointing:
             # Frozen embeddings produce activations that don't track grad,
             # which silently breaks gradient flow back to LoRA adapters
