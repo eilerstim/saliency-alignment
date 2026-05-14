@@ -1,11 +1,13 @@
+# @package lora
 # LoRA (Low-Rank Adaptation) configuration for parameter-efficient fine-tuning.
 #
-# When enabled, the model's `freeze` / `unfreeze` settings are ignored: PEFT
-# freezes the base model and trains only the adapter weights. To additionally
-# train specific base modules in tandem, list them under `modules_to_save`.
+# Set `lora.enabled=true` (or edit below) to use LoRA. When enabled, the
+# model's `freeze` / `unfreeze` settings are ignored: PEFT freezes the base
+# model and trains only the adapter weights. To additionally train specific
+# base modules in tandem, list them under `modules_to_save`.
 #
 # All non-`enabled` fields are forwarded to `peft.LoraConfig`.
-enabled: true
+enabled: false
 
 r: 8
 lora_alpha: 16

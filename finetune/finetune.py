@@ -35,7 +35,7 @@ def finetune(cfg: DictConfig):
     torch.set_float32_matmul_precision("high")
 
     # Prepare model and processor as defined in config
-    model, processor = build_model(cfg.model, lora_cfg=cfg.get("lora"))
+    model, processor = build_model(cfg.model, cfg.lora)
 
     # Loggers
     loggers = [CSVLogger(save_dir=f"{hydra_wd}/logs", name="training_logs")]
@@ -68,8 +68,6 @@ def finetune(cfg: DictConfig):
     # Save model and processor
     if rank == 0:
         save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
-        # PeftModel.save_pretrained filters the full state dict down to the
-        # adapter weights, producing a much smaller checkpoint.
         model.save_pretrained(save_dir, state_dict=state)
         processor.save_pretrained(save_dir)
 

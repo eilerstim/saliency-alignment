@@ -48,18 +48,11 @@ uv run -m finetune model=llava-v1.6-mistral-7b-hf data.dataloader_kwargs.batch_s
 
 The framework supports both full fine-tuning (default) and parameter-efficient
 fine-tuning via [LoRA](https://arxiv.org/abs/2106.09685) (Low-Rank Adaptation),
-powered by [PEFT](https://github.com/huggingface/peft).
-
-Select the LoRA preset from the `configs/lora/` group:
-
-```bash
-uv run -m finetune lora=default
-```
-
-Override individual LoRA parameters from the command line:
+powered by [PEFT](https://github.com/huggingface/peft). LoRA settings live in
+`configs/lora.yaml`; enable and tune them on the command line:
 
 ```bash
-uv run -m finetune lora=default lora.r=16 lora.lora_alpha=32
+uv run -m finetune lora.enabled=true lora.r=16 lora.lora_alpha=32
 ```
 
 When LoRA is enabled, the model's `freeze` / `unfreeze` settings are ignored:

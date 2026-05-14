@@ -1,4 +1,5 @@
 from omegaconf import DictConfig, OmegaConf
+from peft import LoraConfig, get_peft_model
 from transformers import (
     AutoModelForImageTextToText,
     AutoProcessor,
@@ -9,7 +10,7 @@ from transformers import (
 
 def build_model(
     cfg: DictConfig,
-    lora_cfg: DictConfig | None = None,
+    lora_cfg: DictConfig,
 ) -> tuple[PreTrainedModel, ProcessorMixin]:
     """Instantiate model and processor, optionally wrapped with LoRA adapters."""
 
@@ -18,13 +19,10 @@ def build_model(
 
     model.train()
 
-    if lora_cfg is not None and lora_cfg.get("enabled", False):
-        from peft import LoraConfig, get_peft_model
-
-        kwargs = OmegaConf.to_container(lora_cfg, resolve=True)
-        assert isinstance(kwargs, dict)
-        kwargs.pop("enabled", None)
-        model = get_peft_model(model, LoraConfig(**kwargs))
+    if lora_cfg.enabled:
+        lora_kwargs = OmegaConf.to_container(lora_cfg, resolve=True)
+        lora_kwargs.pop("enabled")
+        model = get_peft_model(model, LoraConfig(**lora_kwargs))
     else:
         if "all" in cfg.freeze:
             model.requires_grad_(False)

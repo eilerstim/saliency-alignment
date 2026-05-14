@@ -1,3 +1,0 @@
-# Default: full fine-tuning, no LoRA adapters.
-# To enable LoRA, override the group on the command line, e.g. `lora=default`.
-enabled: false
