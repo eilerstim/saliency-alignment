@@ -1,9 +1,6 @@
-from pathlib import Path
-from typing import Any
-
 import torch
 from omegaconf import DictConfig, OmegaConf
-from peft import LoraConfig, PeftConfig, PeftModel, get_peft_model
+from peft import LoraConfig, get_peft_model
 from transformers import (
     AutoModelForImageTextToText,
     AutoProcessor,
@@ -54,26 +51,3 @@ def build_model(
         )
 
     return model, processor
-
-
-def load_pretrained(
-    model_path: str,
-    *,
-    model_cls: Any = AutoModelForImageTextToText,
-    **kwargs,
-) -> PreTrainedModel:
-    """Load a checkpoint that may be either a full HF model or a LoRA adapter.
-
-    LoRA checkpoints (those containing ``adapter_config.json``) trigger
-    loading the referenced base model, attaching the adapter, and merging
-    it back so the returned model has the same module structure as a
-    full-fine-tuned checkpoint. Extra kwargs are forwarded to the base
-    model's ``from_pretrained``.
-    """
-    if (Path(model_path) / "adapter_config.json").is_file():
-        peft_config = PeftConfig.from_pretrained(model_path)
-        base = model_cls.from_pretrained(
-            peft_config.base_model_name_or_path, **kwargs
-        )
-        return PeftModel.from_pretrained(base, model_path).merge_and_unload()
-    return model_cls.from_pretrained(model_path, **kwargs)

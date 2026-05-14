@@ -32,9 +32,8 @@ from hydra.utils import instantiate
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, DistributedSampler
-from transformers import AutoProcessor
+from transformers import AutoModelForImageTextToText, AutoProcessor
 
-from finetune.model import load_pretrained
 from vl_saliency import Saliency
 
 from .metrics import METRIC_NAMES, format_table, per_image_scores, summarise
@@ -89,8 +88,7 @@ def evaluate(cfg: DictConfig) -> None:
 
     # Eager attention is required for vl_saliency's hook-based extractor.
     # Match the bf16 training precision so metrics see the same numerics.
-    # LoRA checkpoints are auto-detected and merged inside load_pretrained.
-    model = load_pretrained(
+    model = AutoModelForImageTextToText.from_pretrained(
         model_path, dtype=cfg.model.dtype, attn_implementation="eager"
     )
     processor = AutoProcessor.from_pretrained(model_path)
