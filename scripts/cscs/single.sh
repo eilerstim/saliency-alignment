@@ -15,7 +15,6 @@ mkdir -p logs
 export EVAL_ONLY=${EVAL_ONLY:-false}
 
 # If USE_LORA is set to true, train with PEFT/LoRA instead of full fine-tuning.
-# Downstream eval scripts auto-detect adapter checkpoints and merge them.
 export USE_LORA=${USE_LORA:-false}
 
 MODEL_SIZE=7b
