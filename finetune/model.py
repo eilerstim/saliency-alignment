@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+import torch
 from omegaconf import DictConfig, OmegaConf
 from peft import LoraConfig, PeftConfig, PeftModel, get_peft_model
 from transformers import (
@@ -27,17 +28,11 @@ def build_model(
         lora_kwargs.pop("enabled")
         model = get_peft_model(model, LoraConfig(**lora_kwargs))
 
-        # PEFT initializes LoRA adapter weights in fp32 by default. With a
-        # bf16 base model under FSDP, the resulting fp32/bf16 mix inside
-        # each transformer block trips FSDP's "Must flatten tensors with
-        # uniform dtype" check during auto-wrap. Cast the (trainable)
-        # adapter params to the (frozen) base dtype to match.
-        base_dtype = next(
-            p.dtype for p in model.parameters() if not p.requires_grad
-        )
+        # PEFT inits LoRA in fp32; FSDP needs uniform dtype per flat param.
+        dtype = getattr(torch, cfg.dtype)
         for p in model.parameters():
             if p.requires_grad:
-                p.data = p.data.to(base_dtype)
+                p.data = p.data.to(dtype)
 
         if cfg.gradient_checkpointing:
             # Frozen embeddings produce activations that don't track grad,
