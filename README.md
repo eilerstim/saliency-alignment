@@ -44,6 +44,20 @@ The finetuning process can be customized using the configuration files located i
 uv run -m finetune model=llava-v1.6-mistral-7b-hf data.dataloader_kwargs.batch_size=4
 ```
 
+## LoRA Fine-tuning
+
+The framework supports both full fine-tuning (default) and parameter-efficient
+fine-tuning via [LoRA](https://arxiv.org/abs/2106.09685) (Low-Rank Adaptation),
+powered by [PEFT](https://github.com/huggingface/peft). LoRA settings live in
+`configs/lora.yaml`. When LoRA is enabled, the model's `freeze` / `unfreeze` 
+settings are ignored: PEFT freezes the base model and trains only the adapter 
+weights.
+
+Training writes only the adapter weights to `models/<run_id>/`. The
+SLURM training script (`scripts/cscs/arr_train.sh`) immediately follows
+with a merge step that materializes a full HF checkpoint at
+`models/<run_id>-merged/`.
+
 ## Logging and Monitoring
 
 We use [Weights & Biases](https://wandb.ai/) for logging and monitoring the finetuning process. Make sure to set up your W&B account and configure the API key before starting the finetuning.

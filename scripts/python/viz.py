@@ -1,11 +1,13 @@
 import argparse
 import csv
 import re
+
 import requests
-from PIL import Image
 import torch
 import transformers
+from PIL import Image
 from transformers import AutoProcessor, LlavaForConditionalGeneration
+
 from vl_saliency import Saliency
 from vl_saliency.select import regex
 

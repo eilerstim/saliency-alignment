@@ -26,6 +26,9 @@ else
     MODEL_PATH="${PROJECT_DIR}/models/${MODEL_NAME}"
 fi
 
+# Prefer the merged sibling if arr_train.sh produced one (LoRA runs).
+[ -d "${MODEL_PATH}-merged" ] && MODEL_PATH="${MODEL_PATH}-merged"
+
 source ./scripts/cscs/count/env.sh
 
 echo "Starting Count evaluation of ${MODEL_NAME} at $(date)"

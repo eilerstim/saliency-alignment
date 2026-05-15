@@ -26,6 +26,9 @@ else
     MODEL_PATH="models/${MODEL_NAME}"
 fi
 
+# Prefer the merged sibling if arr_train.sh produced one (LoRA runs).
+[ -d "${MODEL_PATH}-merged" ] && MODEL_PATH="${MODEL_PATH}-merged"
+
 echo "Starting LM-eval of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 

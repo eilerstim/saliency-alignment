@@ -5,6 +5,7 @@ defaults:
   - loss: kl
   - trainer
   - dataloader
+  - lora
   - _self_
 
 seed: 42

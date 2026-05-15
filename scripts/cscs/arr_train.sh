@@ -18,7 +18,7 @@ RUN_ID="$1"
 CRITERION="$2"
 LAMBDA="$3"
 MODEL_SIZE="$4"
-FREEZE_OVERRIDE="${5:-}"
+EXTRA_OVERRIDES="${5:-}"
 
 export CRITERION LAMBDA MODEL_SIZE
 
@@ -30,14 +30,22 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
 
 echo "Beginning finetuning of ${RUN_ID} at $(date)"
-echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} FREEZE_OVERRIDE=${FREEZE_OVERRIDE}"
+echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} EXTRA_OVERRIDES=${EXTRA_OVERRIDES}"
 
-# FREEZE_OVERRIDE is intentionally unquoted so multiple Hydra overrides split into separate args.
+# EXTRA_OVERRIDES is intentionally unquoted so multiple Hydra overrides split into separate args.
 srun $PROJECT_DIR/.venv/bin/python -m finetune \
     run_id="${RUN_ID}" \
     loss="${CRITERION}" \
     loss.weight="${LAMBDA}" \
     model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf" \
-    ${FREEZE_OVERRIDE}
+    ${EXTRA_OVERRIDES}
+
+# If we trained with LoRA, materialize a merged HF checkpoint for downstream eval.
+MODEL_DIR="${PROJECT_DIR}/models/${RUN_ID}"
+if [ -f "${MODEL_DIR}/adapter_config.json" ]; then
+    echo "Merging LoRA adapter for ${RUN_ID} at $(date)"
+    $PROJECT_DIR/.venv/bin/python -m finetune.merge \
+        "${MODEL_DIR}" --output "${MODEL_DIR}-merged"
+fi
 
 echo "Finished finetuning of ${RUN_ID} at $(date)"
