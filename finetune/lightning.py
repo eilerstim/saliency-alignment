@@ -1,6 +1,3 @@
-from dataclasses import dataclass
-from typing import Literal
-
 import lightning as L
 import torch
 from hydra.utils import instantiate
@@ -8,15 +5,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
-from .criterion import Criterion
-
-
-@dataclass
-class DummySaliency:
-    saliency: Literal[None] = None
-
-    def accumulate_qk(self, q, k):
-        pass
+from finetune.criterion import Criterion
 
 
 class FineTuner(L.LightningModule):
@@ -33,136 +22,85 @@ class FineTuner(L.LightningModule):
         # Instantiate auxiliary loss function
         self.auxiliary_loss: Criterion = instantiate(self.cfg.loss)
 
-    def forward(self, batch: tuple[dict, dict]):
-        annotated, non_annotated = batch
-        if annotated is not None:
-            annotated_out = self.model(**annotated, return_dict=True)
-        else:
-            annotated_out = None
+    def forward(self, **batch):
+        return self.model(**batch, return_dict=True)
 
-        if non_annotated is not None:
-            dummy_saliency = DummySaliency()
-            non_annotated_out = self.model(
-                saliency=dummy_saliency, **non_annotated, return_dict=True
-            )
-        else:
-            non_annotated_out = None
-
-        return annotated_out, non_annotated_out
-
-    def training_step(self, batch: tuple[dict, dict], batch_idx: int):
+    def training_step(self, batch: tuple[dict, list, list], batch_idx: int):
         # Forward pass with saliency accumulation
-        annotated_out, non_annotated_out = self(batch)
-        loss = torch.tensor(0.0, device=self.device)
-        batch_size = 0
-        if annotated_out is not None:
-            if annotated_out.loss is not None:
-                loss += annotated_out.loss
+        batch, masks, segment_ids = batch
+        outputs = self(**batch)
+        loss = outputs.loss
 
-            # Calculate auxiliary loss
-            annotated = batch[0]
-            auxiliary_loss = self.auxiliary_loss(
-                labels=annotated["labels"],
-                segment_ids=annotated["segment_ids"],
-                preds=annotated_out.logits,
-                saliency=annotated_out.saliency,
-                masks=annotated["masks"],
-            )
-            batch_size += annotated["input_ids"].size(0)
-        else:
-            auxiliary_loss = torch.tensor(0.0, device=self.device)
-
-        if non_annotated_out is not None:
-            if non_annotated_out.loss is not None:
-                loss += non_annotated_out.loss
-            batch_size += batch[1]["input_ids"].size(0)
+        # Calculate auxiliary loss
+        auxiliary_loss = self.auxiliary_loss(
+            labels=batch["labels"],
+            segment_ids=segment_ids,
+            preds=outputs.logits,
+            saliency=outputs.saliency,
+            masks=masks,
+        )
 
         # Log relevant metrics
         log_dict = {
             "train/ce_loss": loss.detach(),
             "train/auxiliary_loss": auxiliary_loss.detach(),
             "train/loss": loss.detach() + auxiliary_loss.detach(),
-            "train/annotated_loss": annotated_out.loss.detach()
-            if annotated_out is not None and annotated_out.loss is not None
-            else torch.tensor(0.0, device=self.device),
-            "train/non_annotated_loss": non_annotated_out.loss.detach()
-            if non_annotated_out is not None and non_annotated_out.loss is not None
-            else torch.tensor(0.0, device=self.device),
         }
         self.log_dict(
             log_dict,
             prog_bar=True,
             sync_dist=True,
-            batch_size=batch_size,
+            batch_size=batch["input_ids"].size(0),
         )
 
         return loss + auxiliary_loss
 
-    def validation_step(self, batch: tuple[dict, dict], batch_idx: int):
+    def validation_step(self, batch: tuple[dict, list, list], batch_idx: int):
         # Forward pass with saliency accumulation
-        annotated_out, non_annotated_out = self(batch)
-        loss = torch.tensor(0.0, device=self.device)
-        batch_size = 0
-        if annotated_out is not None:
-            if annotated_out.loss is not None:
-                loss += annotated_out.loss
-            batch_size += batch[0]["input_ids"].size(0)
-        if non_annotated_out is not None:
-            if non_annotated_out.loss is not None:
-                loss += non_annotated_out.loss
-            batch_size += batch[1]["input_ids"].size(0)
+        batch, masks, segment_ids = batch
+        outputs = self(**batch)
+        loss = outputs.loss
 
-        if annotated_out is not None:
-            # Calculate auxiliary loss
-            annotated = batch[0]
-            auxiliary_loss = self.auxiliary_loss(
-                labels=annotated["labels"],
-                segment_ids=annotated["segment_ids"],
-                preds=annotated_out.logits,
-                saliency=annotated_out.saliency,
-                masks=annotated["masks"],
+        # Calculate auxiliary loss
+        auxiliary_loss = self.auxiliary_loss(
+            labels=batch["labels"],
+            segment_ids=segment_ids,
+            preds=outputs.logits,
+            saliency=outputs.saliency,
+            masks=masks,
+        )
+
+        preds = outputs.logits.argmax(dim=-1)
+        labels = batch["labels"]
+
+        # Shift for next-token prediction
+        shift_preds = preds[:, :-1]
+        shift_labels = labels[:, 1:]
+
+        # Ignore padding (-100)
+        valid_token_mask = shift_labels != -100
+
+        if valid_token_mask.any():
+            accuracy = (
+                (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
+                .float()
+                .mean()
             )
         else:
-            auxiliary_loss = torch.tensor(0.0, device=self.device)
-
-        # preds = annotated_out.logits.argmax(dim=-1)
-        # labels = annotated["labels"]
-
-        # # Shift for next-token prediction
-        # shift_preds = preds[:, :-1]
-        # shift_labels = labels[:, 1:]
-
-        # # Ignore padding (-100)
-        # valid_token_mask = shift_labels != -100
-
-        # if valid_token_mask.any():
-        #     accuracy = (
-        #         (shift_preds[valid_token_mask] == shift_labels[valid_token_mask])
-        #         .float()
-        #         .mean()
-        #     )
-        # else:
-        #     accuracy = torch.tensor(0.0, device=labels.device)
+            accuracy = torch.tensor(0.0, device=labels.device)
 
         # Log relevant metrics
         log_dict = {
             "val/ce_loss": loss,
             "val/auxiliary_loss": auxiliary_loss,
             "val/loss": loss + auxiliary_loss,
-            "val/annotated_loss": annotated_out.loss
-            if annotated_out is not None and annotated_out.loss is not None
-            else torch.tensor(0.0, device=self.device),
-            "val/non_annotated_loss": non_annotated_out.loss
-            if non_annotated_out is not None and non_annotated_out.loss is not None
-            else torch.tensor(0.0, device=self.device),
-            # "val/accuracy": accuracy,
+            "val/accuracy": accuracy,
         }
-
         self.log_dict(
             log_dict,
             prog_bar=True,
             sync_dist=True,
-            batch_size=batch_size,
+            batch_size=batch["input_ids"].size(0),
         )
 
     def configure_optimizers(self) -> tuple:

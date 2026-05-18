@@ -25,7 +25,7 @@ class Criterion(ABC):
     def __call__(
         self,
         labels: Int[Tensor, "B S"],
-        segment_ids: Int[Tensor, "B S M"],
+        segment_ids: list[Int[Tensor, "B S M"]],
         preds: Float[Tensor, "B T V"],
         saliency: SaliencyGrid,
         masks: list[Tensor],
@@ -45,6 +45,9 @@ class Criterion(ABC):
 
         losses: list[Tensor] = []
         for b in range(saliency.batch_size):
+            if masks[b] is None:
+                continue  # Skip if no annotation for this sample
+
             mask = masks[b]  # (H, W)
             attn = saliency.maps_for_image(
                 batch_idx=b, image_idx=0

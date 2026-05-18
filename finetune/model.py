@@ -28,7 +28,7 @@ def build_model(cfg: DictConfig) -> tuple[PreTrainedModel, ProcessorMixin]:
 
         llm.resize_token_embeddings(len(processor.tokenizer))
         model.model.language_model.resize_token_embeddings(len(processor.tokenizer))
-        model.resize_token_embeddings(len(processor.tokenizer)) 
+        model.resize_token_embeddings(len(processor.tokenizer))
 
         model.model.language_model.load_state_dict(
             llm.model.state_dict(),

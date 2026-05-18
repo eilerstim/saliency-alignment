@@ -11,11 +11,10 @@ from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
 
+from finetune.lightning import FineTuner
+from finetune.model import build_model
+from finetune.strategy import load_lt_state, load_strategy
 from vl_saliency import Saliency
-
-from .lightning import FineTuner
-from .model import build_model
-from .strategy import load_lt_state, load_strategy
 
 logger = logging.getLogger(__name__)
 
