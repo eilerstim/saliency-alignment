@@ -162,7 +162,7 @@ def llava_150k_instruct_dataset(
     ds = load_dataset("arrow", data_files=data_files, split=split)
     processor = AutoProcessor.from_pretrained(data_cfg.processor)
     mask_dir = Path(data_cfg.coconut.masks_dir)
-    image_dir = Path(data_cfg.images_dir)
+    image_dir = Path(data_cfg[split].images_dir)
     suffix_tokens = _compute_suffix_tokens(processor)
 
     ds.set_transform(build_transform(processor, mask_dir, image_dir, suffix_tokens))
