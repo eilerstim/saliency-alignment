@@ -17,7 +17,7 @@ set -euo pipefail
 RUN_ID="$1"
 CRITERION="$2"
 LAMBDA="$3"
-MODEL_SIZE="$4"
+MODEL="$4"
 EXTRA_OVERRIDES="${5:-}"
 
 export CRITERION LAMBDA MODEL
@@ -33,14 +33,14 @@ export CUDA_LAUNCH_BLOCKING=1
 export HYDRA_FULL_ERROR=1
 
 echo "Beginning finetuning of ${RUN_ID} at $(date)"
-echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} EXTRA_OVERRIDES=${EXTRA_OVERRIDES}"
+echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL=${MODEL} EXTRA_OVERRIDES=${EXTRA_OVERRIDES}"
 
 # EXTRA_OVERRIDES is intentionally unquoted so multiple Hydra overrides split into separate args.
 srun $PROJECT_DIR/.venv/bin/python -m finetune \
     run_id="${RUN_ID}" \
     loss="${CRITERION}" \
     loss.weight="${LAMBDA}" \
-    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf" \
+    model="${MODEL}" \
     ${EXTRA_OVERRIDES}
 
 # If we trained with LoRA, materialize a merged HF checkpoint for downstream eval.
