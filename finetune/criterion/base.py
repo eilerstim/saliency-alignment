@@ -54,6 +54,7 @@ class Criterion(ABC):
             )  # (gen_len, patch_H, patch_W)
 
             gen_ids = labels[b] != -100
+            gen_ids = gen_ids[:segment_ids.shape[1]]
             seg_ids = segment_ids[b][gen_ids]  # (gen_len, max_segments)
 
             gen_len = seg_ids.shape[0]
