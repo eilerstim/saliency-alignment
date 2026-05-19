@@ -25,11 +25,11 @@ dataset:
 
 # Collator configuration
 collator:
-  _target_: finetune.data.llava_150k.collator.make_collate_fn
+  _target_: finetune.data.llava_150k.dataset.make_collate_fn
   # processor will be passed at runtime via partial
 
 eval_collator:
-  _target_: finetune.data.llava_150k.collator.make_collate_fn
+  _target_: finetune.data.llava_150k.dataset.make_collate_fn
   # processor will be passed at runtime via partial
 
 # Train/val splits
