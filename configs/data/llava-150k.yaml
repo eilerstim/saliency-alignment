@@ -15,7 +15,8 @@ defaults:
   - coconut
   - _self_
 
-coconut_samples: 23000  # Number of samples to use from COCONut
+processor: llava-hf/llava-1.5-7b-hf
+
 
 # Dataset configuration
 dataset:
@@ -25,22 +26,18 @@ dataset:
 collator:
   _target_: finetune.data.llava_150k.collator.make_collate_fn
   # processor will be passed at runtime via partial
-  image_path: ${..images_dir}/train2014
 
 eval_collator:
   _target_: finetune.data.llava_150k.collator.make_collate_fn
   # processor will be passed at runtime via partial
-  image_path: ${..images_dir}/train2014
 
 # Train/val splits
 train:
   split: train
   name: train2017
   images_dir: ${..images_dir}/${.name}
-  url: http://images.cocodataset.org/zips/train2014.zip
 
 validation:
   split: validation
   name: val2017
   images_dir: ${..images_dir}/${.name}
-  url: http://images.cocodataset.org/zips/val2014.zip

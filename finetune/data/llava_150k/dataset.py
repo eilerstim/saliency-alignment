@@ -17,7 +17,7 @@ from finetune.data.coconut.tokenization import (
 from finetune.data.utils import find_sequence
 
 
-def build_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | None]:
+def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], tuple[dict, list[torch.Tensor], list[torch.Tensor]]]:
     tokenizer = processor.tokenizer
 
     def collate_fn(batch):
@@ -131,7 +131,7 @@ def build_tokenize_fn(
     return tokenize_fn
 
 
-def llava_150k_instruct_dataset(data_cfg: DictConfig):
+def llava_150k_instruct_dataset(data_cfg: DictConfig, split: Literal["train", "validation"] = "train") -> torch.utils.data.Dataset:
     """Creates a combined dataset for the LLaVA 150k instruction tuning, consisting of:
     1. The original LLaVA 150k dataset (complex reasoning and conversation subsets).
     2. The COCONut panoptic segmentation dataset with captions.
@@ -141,7 +141,6 @@ def llava_150k_instruct_dataset(data_cfg: DictConfig):
     Returns:
         A concatenated dataset combining LLaVA 150k and COCONut.
     """
-    split = data_cfg.split
     data_files = {split: f"{data_cfg.data_dir}/{split}/data-00000-of-00001.arrow"}
     ds = load_dataset("arrow", data_files=data_files, split=split)
     processor = AutoProcessor.from_pretrained(data_cfg.processor)
