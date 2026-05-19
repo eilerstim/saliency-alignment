@@ -17,6 +17,7 @@ defaults:
 
 processor: llava-hf/llava-1.5-7b-hf
 
+llava_150k_dir: ${oc.env:PROJECT_DIR}/data/llava_coconut_pancap_150k
 
 # Dataset configuration
 dataset:

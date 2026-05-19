@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from datasets import Dataset, load_dataset, DatasetDict
+from datasets import Dataset, DatasetDict, load_dataset
 from huggingface_hub import hf_hub_download
 
 from finetune.data.coconut.dataset import _has_clean_format
@@ -235,6 +235,7 @@ def save_hf_dataset(rows: list[dict[str, Any]], output_dir: Path) -> None:
     shuffled = rows.copy()
     random_state = 42
     import random
+
     random.Random(random_state).shuffle(shuffled)
     train_rows = shuffled[1000:]
     val_rows = shuffled[:1000]
@@ -242,10 +243,12 @@ def save_hf_dataset(rows: list[dict[str, Any]], output_dir: Path) -> None:
     train_ds = Dataset.from_list(train_rows)
     val_ds = Dataset.from_list(val_rows)
 
-    dataset = DatasetDict({
-        "train": train_ds,
-        "validation": val_ds,
-    })
+    dataset = DatasetDict(
+        {
+            "train": train_ds,
+            "validation": val_ds,
+        }
+    )
     dataset.save_to_disk(str(output_dir))
 
 

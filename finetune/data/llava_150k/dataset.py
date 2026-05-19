@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import torch
@@ -17,7 +18,9 @@ from finetune.data.coconut.tokenization import (
 from finetune.data.utils import find_sequence
 
 
-def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], tuple[dict, list[torch.Tensor], list[torch.Tensor]]]:
+def make_collate_fn(
+    processor: ProcessorMixin,
+) -> Callable[[list[dict]], tuple[dict, list[torch.Tensor], list[torch.Tensor]]]:
     tokenizer = processor.tokenizer
 
     def collate_fn(batch):
@@ -131,7 +134,9 @@ def build_tokenize_fn(
     return tokenize_fn
 
 
-def llava_150k_instruct_dataset(data_cfg: DictConfig, split: Literal["train", "validation"] = "train") -> torch.utils.data.Dataset:
+def llava_150k_instruct_dataset(
+    data_cfg: DictConfig, split: Literal["train", "validation"], trainer = None
+) -> torch.utils.data.Dataset:
     """Creates a combined dataset for the LLaVA 150k instruction tuning, consisting of:
     1. The original LLaVA 150k dataset (complex reasoning and conversation subsets).
     2. The COCONut panoptic segmentation dataset with captions.
@@ -141,23 +146,39 @@ def llava_150k_instruct_dataset(data_cfg: DictConfig, split: Literal["train", "v
     Returns:
         A concatenated dataset combining LLaVA 150k and COCONut.
     """
-    data_files = {split: f"{data_cfg.data_dir}/{split}/data-00000-of-00001.arrow"}
+    data_files = {split: f"{data_cfg.llava_150k_dir}/{split}/data-00000-of-00001.arrow"}
     ds = load_dataset("arrow", data_files=data_files, split=split)
     processor = AutoProcessor.from_pretrained(data_cfg.processor)
     mask_dir = Path(data_cfg.coconut.masks_dir)
-    image_dir = Path(data_cfg.coconut.images_dir)
+    image_dir = Path(data_cfg.images_dir)
     suffix_tokens = _compute_suffix_tokens(processor)
 
-    ds = ds.map(
-        build_tokenize_fn(
-            processor=processor,
-            mask_dir=mask_dir,
-            suffix_tokens=suffix_tokens,
-        ),
-        batched=False,
-        num_proc=4,
-        remove_columns=["image", "conversations", "segments"],
-    )
+    def map(ds: torch.utils.data.Dataset) -> torch.utils.data.Dataset:
+        return ds.map(
+            build_tokenize_fn(
+                processor=processor,
+                mask_dir=mask_dir,
+                suffix_tokens=suffix_tokens,
+            ),
+            batched=False,
+            num_proc=4,
+            remove_columns=["image", "conversations", "segments"],
+        )
+
+    is_global_zero = trainer is None or trainer.is_global_zero
+    
+    if is_global_zero:
+        ds = map(ds)
+
+    if trainer is not None:
+        trainer.strategy.barrier()
+    
+    if not is_global_zero:
+        ds = map(ds)
+
+    if trainer is not None:
+        trainer.strategy.barrier()
+        
     ds.set_transform(build_transform(processor, image_dir))
     return ds
 
@@ -185,7 +206,7 @@ if __name__ == "__main__":
         dataset,
         batch_size=4,
         shuffle=True,
-        collate_fn=build_collate_fn(AutoProcessor.from_pretrained(cfg.processor)),
+        collate_fn=make_collate_fn(AutoProcessor.from_pretrained(cfg.processor)),
     )
     batch, maps, segment_ids = next(iter(dataloader))
     print(batch.keys())

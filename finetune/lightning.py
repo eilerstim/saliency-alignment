@@ -113,20 +113,23 @@ class FineTuner(L.LightningModule):
         scheduler = instantiate(self.cfg.scheduler, optimizer=optimizer)
         return [optimizer], [scheduler]
 
+    def setup(self, stage: str | None = None) -> None:
+        if stage in ("fit", "validate", None):
+            trainer = self.trainer
+        else:
+            trainer = None
+        
+        self.train_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train", trainer=trainer)
+        self.val_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation", trainer=trainer)
+        
     def train_dataloader(self) -> DataLoader:
-        # Instantiate dataset with split="train"
-        dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
-
         # Get collator function and bind processor via partial
         collate_fn = instantiate(self.cfg.data.collator, processor=self.processor)
 
         dl_kwargs = getattr(self.cfg, "dataloader", {})
-        return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
+        return DataLoader(self.train_dataset, collate_fn=collate_fn, **dl_kwargs)
 
     def val_dataloader(self) -> DataLoader:
-        # Instantiate dataset with split="validation"
-        dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
-
         # Get eval collator function and bind processor via partial
         collate_fn = instantiate(self.cfg.data.eval_collator, processor=self.processor)
 
@@ -135,4 +138,4 @@ class FineTuner(L.LightningModule):
         )
         dl_kwargs["shuffle"] = False  # No shuffling for validation
 
-        return DataLoader(dataset, collate_fn=collate_fn, **dl_kwargs)
+        return DataLoader(self.val_dataset, collate_fn=collate_fn, **dl_kwargs)

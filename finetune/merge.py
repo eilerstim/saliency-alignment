@@ -31,8 +31,10 @@ def main() -> None:
     args = ap.parse_args()
 
     adapter_dir = Path(args.adapter_dir)
-    out_dir = Path(args.output) if args.output else adapter_dir.with_name(
-        adapter_dir.name + "-merged"
+    out_dir = (
+        Path(args.output)
+        if args.output
+        else adapter_dir.with_name(adapter_dir.name + "-merged")
     )
 
     peft_config = PeftConfig.from_pretrained(str(adapter_dir))
