@@ -12,8 +12,10 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, DatasetDict
 from huggingface_hub import hf_hub_download
+
+from finetune.data.coconut.dataset import _has_clean_format
 
 LLAVA_REPO_ID = "liuhaotian/LLaVA-Instruct-150K"
 LLAVA_DETAIL_FILE = "detail_23k.json"
@@ -102,6 +104,10 @@ def load_coconut_index(
 
         if image_id in captions_by_image_id:
             duplicate_keys += 1
+            continue
+
+        if not _has_clean_format(caption):
+            skipped_rows += 1
             continue
 
         captions_by_image_id[image_id] = caption.strip()
@@ -224,7 +230,23 @@ def load_extra_llava_rows() -> list[dict[str, Any]]:
 
 def save_hf_dataset(rows: list[dict[str, Any]], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    Dataset.from_list(rows).save_to_disk(str(output_dir))
+
+    # split into train/validation (shuffle, then take 1000 samples for validation)
+    shuffled = rows.copy()
+    random_state = 42
+    import random
+    random.Random(random_state).shuffle(shuffled)
+    train_rows = shuffled[1000:]
+    val_rows = shuffled[:1000]
+
+    train_ds = Dataset.from_list(train_rows)
+    val_ds = Dataset.from_list(val_rows)
+
+    dataset = DatasetDict({
+        "train": train_ds,
+        "validation": val_ds,
+    })
+    dataset.save_to_disk(str(output_dir))
 
 
 def build_summary(

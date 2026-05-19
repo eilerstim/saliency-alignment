@@ -141,8 +141,9 @@ def llava_150k_instruct_dataset(data_cfg: DictConfig):
     Returns:
         A concatenated dataset combining LLaVA 150k and COCONut.
     """
-    data_files = {"train": data_cfg.data_dir + "/data-00000-of-00001.arrow"}
-    ds = load_dataset("arrow", data_files=data_files, split="train")
+    split = data_cfg.split
+    data_files = {split: f"{data_cfg.data_dir}/{split}/data-00000-of-00001.arrow"}
+    ds = load_dataset("arrow", data_files=data_files, split=split)
     processor = AutoProcessor.from_pretrained(data_cfg.processor)
     mask_dir = Path(data_cfg.coconut.masks_dir)
     image_dir = Path(data_cfg.coconut.images_dir)
@@ -166,6 +167,7 @@ if __name__ == "__main__":
     from omegaconf import DictConfig
 
     dict_cfg = {
+        "split": "train",
         "data_dir": "data/llava_coconut_pancap_150k",
         "processor": "llava-hf/llava-1.5-7b-hf",
         "coconut": {
