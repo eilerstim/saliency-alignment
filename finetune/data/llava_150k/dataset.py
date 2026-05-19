@@ -52,20 +52,32 @@ def make_collate_fn(
     return collate_fn
 
 
-def build_transform(processor: ProcessorMixin, image_dir: Path):
+def build_transform(
+    processor: ProcessorMixin,
+    mask_dir: Path,
+    image_dir: Path,
+    suffix_tokens: list[int],
+):
+    tokenize_fn = build_tokenize_fn(processor, mask_dir, suffix_tokens)
+
     def transform(batch):
+        examples = [
+            {key: batch[key][i] for key in batch}
+            for i in range(len(batch["id"]))
+        ]
+        tokenized = [tokenize_fn(ex) for ex in examples]
+
         images = [
             Image.open(image_dir / f"{id_}.jpg").convert("RGB") for id_ in batch["id"]
         ]
-
         image_inputs = processor.image_processor(
             images=images,
             return_tensors="pt",
         )
 
-        batch.update(image_inputs)
-        batch.pop("id")
-        return batch
+        out = {key: [t[key] for t in tokenized] for key in tokenized[0]}
+        out["pixel_values"] = image_inputs["pixel_values"]
+        return out
 
     return transform
 
@@ -135,7 +147,7 @@ def build_tokenize_fn(
 
 
 def llava_150k_instruct_dataset(
-    data_cfg: DictConfig, split: Literal["train", "validation"], trainer = None
+    data_cfg: DictConfig, split: Literal["train", "validation"]
 ) -> torch.utils.data.Dataset:
     """Creates a combined dataset for the LLaVA 150k instruction tuning, consisting of:
     1. The original LLaVA 150k dataset (complex reasoning and conversation subsets).
@@ -153,33 +165,7 @@ def llava_150k_instruct_dataset(
     image_dir = Path(data_cfg.images_dir)
     suffix_tokens = _compute_suffix_tokens(processor)
 
-    def map(ds: torch.utils.data.Dataset) -> torch.utils.data.Dataset:
-        return ds.map(
-            build_tokenize_fn(
-                processor=processor,
-                mask_dir=mask_dir,
-                suffix_tokens=suffix_tokens,
-            ),
-            batched=False,
-            num_proc=4,
-            remove_columns=["image", "conversations", "segments"],
-        )
-
-    is_global_zero = trainer is None or trainer.is_global_zero
-    
-    if is_global_zero:
-        ds = map(ds)
-
-    if trainer is not None:
-        trainer.strategy.barrier()
-    
-    if not is_global_zero:
-        ds = map(ds)
-
-    if trainer is not None:
-        trainer.strategy.barrier()
-        
-    ds.set_transform(build_transform(processor, image_dir))
+    ds.set_transform(build_transform(processor, mask_dir, image_dir, suffix_tokens))
     return ds
 
 

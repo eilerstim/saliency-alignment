@@ -114,13 +114,8 @@ class FineTuner(L.LightningModule):
         return [optimizer], [scheduler]
 
     def setup(self, stage: str | None = None) -> None:
-        if stage in ("fit", "validate", None):
-            trainer = self.trainer
-        else:
-            trainer = None
-        
-        self.train_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train", trainer=trainer)
-        self.val_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation", trainer=trainer)
+        self.train_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
+        self.val_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
         
     def train_dataloader(self) -> DataLoader:
         # Get collator function and bind processor via partial
