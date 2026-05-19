@@ -46,7 +46,7 @@ def make_collate_fn(
             padding_value=-100,
         )
 
-        padded["pixel_values"] = torch.cat([x["pixel_values"] for x in batch])
+        padded["pixel_values"] = torch.stack([x["pixel_values"] for x in batch])
         return padded, masks, segment_ids
 
     return collate_fn
