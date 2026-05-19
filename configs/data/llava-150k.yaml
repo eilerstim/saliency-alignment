@@ -32,7 +32,8 @@ eval_collator:
   _target_: finetune.data.llava_150k.dataset.make_collate_fn
   # processor will be passed at runtime via partial
 
-# Train/val splits
+# Train/val splits — LLaVA-150k is sampled entirely from COCO train2017,
+# and the validation split is a random hold-out of those same rows.
 train:
   split: train
   name: train2017
@@ -40,5 +41,5 @@ train:
 
 validation:
   split: validation
-  name: val2017
+  name: train2017
   images_dir: ${..images_dir}/${.name}
