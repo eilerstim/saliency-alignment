@@ -58,7 +58,7 @@ def build_transform(
     image_dir: Path,
     suffix_tokens: list[int],
 ):
-    tokenize_fn = build_tokenize_fn(processor, mask_dir, suffix_tokens)
+    tokenize_fn = build_tokenize_fn(processor, mask_dir, image_dir, suffix_tokens)
 
     def transform(batch):
         examples = [
@@ -66,18 +66,7 @@ def build_transform(
             for i in range(len(batch["id"]))
         ]
         tokenized = [tokenize_fn(ex) for ex in examples]
-
-        images = [
-            Image.open(image_dir / f"{id_}.jpg").convert("RGB") for id_ in batch["id"]
-        ]
-        image_inputs = processor.image_processor(
-            images=images,
-            return_tensors="pt",
-        )
-
-        out = {key: [t[key] for t in tokenized] for key in tokenized[0]}
-        out["pixel_values"] = image_inputs["pixel_values"]
-        return out
+        return {key: [t[key] for t in tokenized] for key in tokenized[0]}
 
     return transform
 
@@ -85,10 +74,12 @@ def build_transform(
 def build_tokenize_fn(
     processor: ProcessorMixin,
     mask_dir: Path,
+    image_dir: Path,
     suffix_tokens: list[int],
 ):
     def tokenize_fn(example):
         text = example["conversations"]
+        image = Image.open(image_dir / f"{example['id']}.jpg").convert("RGB")
 
         if example["segments"]:
             mask = torch.from_numpy(np.load(mask_dir / f"{example['id']}.npy")).long()
@@ -103,8 +94,9 @@ def build_tokenize_fn(
             text, tokenize=False, add_generation_prompt=False
         )
 
-        processed = processor.tokenizer(
-            prompt,
+        processed = processor(
+            text=[prompt],
+            images=[image],
             padding=False,
             return_tensors="pt",
         )
