@@ -34,7 +34,7 @@ def finetune(cfg: DictConfig):
     torch.set_float32_matmul_precision("high")
 
     # Prepare model and processor as defined in config
-    model, processor = build_model(cfg.model)
+    model, processor = build_model(cfg.model, cfg.lora)
 
     # Loggers
     loggers = [CSVLogger(save_dir=f"{hydra_wd}/logs", name="training_logs")]

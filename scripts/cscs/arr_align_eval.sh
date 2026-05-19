@@ -14,12 +14,18 @@
 
 set -euo pipefail
 
-RUN_ID="$1"
-CRITERION="$2"
-LAMBDA="$3"
-MODEL="$4"
+MODEL_NAME="$1"
 
-export CRITERION LAMBDA MODEL
+# if second arg is set to true, it's a hf model name
+# Otherwise, it's a run_id under models/
+if [ "${2:-false}" = "true" ]; then
+    MODEL_PATH="${MODEL_NAME}"
+else
+    MODEL_PATH="${PROJECT_DIR}/models/${MODEL_NAME}"
+fi
+
+# Prefer the merged sibling if arr_train.sh produced one (LoRA runs).
+[ -d "${MODEL_PATH}-merged" ] && MODEL_PATH="${MODEL_PATH}-merged"
 
 source ./scripts/cscs/env.sh
 
@@ -28,12 +34,10 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
 
-echo "Beginning alignment eval of ${RUN_ID} at $(date)"
+echo "Beginning alignment eval of ${MODEL_NAME} at $(date)"
 
 srun $PROJECT_DIR/.venv/bin/python -m align_eval.eval \
-    run_id="${RUN_ID}" \
-    loss="${CRITERION}" \
-    loss.weight="${LAMBDA}" \
-    model="${MODEL}"
+    run_id="${MODEL_NAME//\//__}" \
+    +model_path="${MODEL_PATH}"
 
-echo "Finished alignment eval of ${RUN_ID} at $(date)"
+echo "Finished alignment eval of ${MODEL_NAME} at $(date)"

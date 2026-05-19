@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=aa013 
+#SBATCH --account=aa013
 #SBATCH --job-name=submit_arr
 #SBATCH --output=logs/%x_%A_%a.out
 #SBATCH --error=logs/%x_%A_%a.err
@@ -7,8 +7,11 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-5%4
-# Array: 0-3 = criterion x lambdas; 4 = default (no regularization); 5 = baseline eval only
+#SBATCH --array=0-6%4
+# Array layout (kl x single lambda x freeze, plus default-per-freeze, plus baseline):
+#   0..2 = kl x lambda=0.5 x {3 freezes}
+#   3..5 = default x {3 freezes}
+#   6    = baseline eval only
 
 set -euo pipefail
 mkdir -p logs
@@ -20,11 +23,19 @@ MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
 CRITERION="kl"
-LAMBDAS=(0.0001 0.001 0.01 0.1 1.0)
+LAMBDAS=(0.5)
+FREEZE_NAMES=("lm_only" "proj_only" "lm_proj")
+FREEZE_OVERRIDES=(
+    "model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
+    "model.freeze=[all] model.unfreeze=[multi_modal_projector]"
+    "model.freeze=[vision_tower] model.unfreeze=[]"
+)
 
 NUM_LAMBDAS=${#LAMBDAS[@]}
-DEFAULT_ID=${NUM_LAMBDAS}
-BASELINE_ID=$((NUM_LAMBDAS + 1))
+NUM_FREEZES=${#FREEZE_NAMES[@]}
+NUM_KL_TASKS=$((NUM_LAMBDAS * NUM_FREEZES))
+DEFAULT_START_ID=${NUM_KL_TASKS}
+BASELINE_ID=$((NUM_KL_TASKS + NUM_FREEZES))
 
 # ---- BASELINE: eval only ----
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "${BASELINE_ID}" ]; then
@@ -34,16 +45,21 @@ if [ "${SLURM_ARRAY_TASK_ID}" -eq "${BASELINE_ID}" ]; then
     exit 0
 fi
 
-# ---- Resolve lambda (or default) ----
-if [ "${SLURM_ARRAY_TASK_ID}" -eq "${DEFAULT_ID}" ]; then
+# ---- Resolve criterion / lambda / freeze ----
+if [ "${SLURM_ARRAY_TASK_ID}" -ge "${DEFAULT_START_ID}" ]; then
     CRITERION="default"
     LAMBDA=0.0
+    FREEZE_IDX=$((SLURM_ARRAY_TASK_ID - DEFAULT_START_ID))
 else
-    LAMBDA_INDEX=${SLURM_ARRAY_TASK_ID}   # 0..NUM_LAMBDAS-1
-    LAMBDA=${LAMBDAS[$LAMBDA_INDEX]}
+    LAMBDA_IDX=$((SLURM_ARRAY_TASK_ID / NUM_FREEZES))
+    FREEZE_IDX=$((SLURM_ARRAY_TASK_ID % NUM_FREEZES))
+    LAMBDA=${LAMBDAS[$LAMBDA_IDX]}
 fi
 
-RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}"
+FREEZE_NAME=${FREEZE_NAMES[$FREEZE_IDX]}
+FREEZE_OVERRIDE=${FREEZE_OVERRIDES[$FREEZE_IDX]}
+
+RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}_${FREEZE_NAME}"
 
 echo "Submitting jobs for ${RUN_ID} at $(date)"
 
@@ -58,7 +74,7 @@ fi
 # ---- Submit training job ----
 TRAIN_JOBID=$(sbatch --parsable \
     scripts/cscs/arr_train.sh \
-    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE")
+    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE" "$FREEZE_OVERRIDE")
 
 # ---- Submit evaluation job dependent on training ----
 sbatch --dependency=afterok:${TRAIN_JOBID} \
