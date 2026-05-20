@@ -28,8 +28,8 @@ def make_collate_fn(
         segment_ids = [x.pop("segment_ids") for x in batch]
         text_batch = [
             {
-                "input_ids": torch.tensor(x["input_ids"]),
-                "attention_mask": torch.tensor(x["attention_mask"]),
+                "input_ids": x["input_ids"],
+                "attention_mask": x["attention_mask"],
             }
             for x in batch
         ]
@@ -41,7 +41,7 @@ def make_collate_fn(
         )
 
         padded["labels"] = pad_sequence(
-            [torch.tensor(x["labels"]) for x in batch],
+            [x["labels"] for x in batch],
             batch_first=True,
             padding_value=-100,
         )
