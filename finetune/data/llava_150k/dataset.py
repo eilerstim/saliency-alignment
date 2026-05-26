@@ -1,5 +1,5 @@
+import copy
 from collections.abc import Callable
-from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -7,7 +7,6 @@ import torch
 from datasets import load_dataset
 from omegaconf import DictConfig
 from PIL import Image
-from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoProcessor, ProcessorMixin
 
 from finetune.data.coconut.collator import _compute_suffix_tokens
@@ -20,122 +19,104 @@ from finetune.data.utils import find_sequence
 
 def make_collate_fn(
     processor: ProcessorMixin,
-) -> Callable[[list[dict]], tuple[dict, list[torch.Tensor], list[torch.Tensor]]]:
+    masks_dir: str,
+    images_dir: str,
+) -> Callable[[list[dict]], tuple[dict, list[torch.Tensor | None], list[torch.Tensor | None]]]:
     tokenizer = processor.tokenizer
+    suffix_tokens = _compute_suffix_tokens(processor)
 
-    def collate_fn(batch):
-        masks = [x.pop("mask") for x in batch]
-        segment_ids = [x.pop("segment_ids") for x in batch]
-        text_batch = [
-            {
-                "input_ids": x["input_ids"],
-                "attention_mask": x["attention_mask"],
-            }
-            for x in batch
-        ]
+    def collate_fn(batch: list[dict]):
+        texts = []
+        images = []
+        masks = []
+        parsed_segments_batch = []
 
-        padded = tokenizer.pad(
-            text_batch,
+        for ex in batch:
+            text = ex["conversations"]
+            image = Image.open(f"{images_dir}/{ex['id']}.jpg").convert("RGB")
+
+            if ex["segments"]:
+                mask = torch.from_numpy(
+                    np.load(f"{masks_dir}/{ex['id']}.npy")
+                ).long()
+
+                assistant_text = text[-1]["content"][-1]["text"]
+                parsed_segments = parse_annotated_caption(assistant_text)
+                cleaned = "".join(t for _, t in parsed_segments)
+
+                # avoid mutating HF dataset-owned nested object
+                text = copy.deepcopy(text)
+                text[-1]["content"][-1]["text"] = cleaned
+            else:
+                mask = None
+                parsed_segments = None
+
+            prompt = processor.apply_chat_template(
+                text,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+            texts.append(prompt)
+            images.append(image)
+            masks.append(mask)
+            parsed_segments_batch.append(parsed_segments)
+
+        processed = processor(
+            text=texts,
+            images=images,
             padding=True,
             return_tensors="pt",
         )
 
-        padded["labels"] = pad_sequence(
-            [x["labels"] for x in batch],
-            batch_first=True,
-            padding_value=-100,
-        )
-
-        padded["pixel_values"] = torch.stack([x["pixel_values"] for x in batch])
-        return padded, masks, segment_ids
-
-    return collate_fn
-
-
-def build_transform(
-    processor: ProcessorMixin,
-    mask_dir: Path,
-    image_dir: Path,
-    suffix_tokens: list[int],
-):
-    tokenize_fn = build_tokenize_fn(processor, mask_dir, image_dir, suffix_tokens)
-
-    def transform(batch):
-        examples = [
-            {key: batch[key][i] for key in batch}
-            for i in range(len(batch["id"]))
-        ]
-        tokenized = [tokenize_fn(ex) for ex in examples]
-        return {key: [t[key] for t in tokenized] for key in tokenized[0]}
-
-    return transform
-
-
-def build_tokenize_fn(
-    processor: ProcessorMixin,
-    mask_dir: Path,
-    image_dir: Path,
-    suffix_tokens: list[int],
-):
-    def tokenize_fn(example):
-        text = example["conversations"]
-        image = Image.open(image_dir / f"{example['id']}.jpg").convert("RGB")
-
-        if example["segments"]:
-            mask = torch.from_numpy(np.load(mask_dir / f"{example['id']}.npy")).long()
-            assistant_text = text[-1]["content"][-1]["text"]
-            parsed_segments = parse_annotated_caption(assistant_text)
-            cleaned = "".join(text for _, text in parsed_segments)
-            text[-1]["content"][-1]["text"] = cleaned
-        else:
-            mask = None
-
-        prompt = processor.apply_chat_template(
-            text, tokenize=False, add_generation_prompt=False
-        )
-
-        processed = processor(
-            text=[prompt],
-            images=[image],
-            padding=False,
-            return_tensors="pt",
-        )
-        processed = {k: v.squeeze(0) for k, v in processed.items()}
-
         input_ids = processed["input_ids"]
-
         labels = input_ids.clone()
-        labels[labels == processor.tokenizer.pad_token_id] = -100
+        labels[labels == tokenizer.pad_token_id] = -100
 
-        caption_start = find_sequence(input_ids, suffix_tokens) + len(suffix_tokens)
-        labels[:caption_start] = -100
+        segment_ids = []
 
-        if example["segments"]:
+        for i, parsed_segments in enumerate(parsed_segments_batch):
+            caption_start = find_sequence(input_ids[i], suffix_tokens)
+
+            if caption_start == -1:
+                labels[i, :] = -100
+                segment_ids.append(None)
+                continue
+
+            caption_start += len(suffix_tokens)
+            labels[i, :caption_start] = -100
+
+            if parsed_segments is None:
+                segment_ids.append(None)
+                continue
+
             _, cap_ann_ids = tokenize_from_parsed(
-                parsed_segments, processor.tokenizer, add_special_tokens=False
+                parsed_segments,
+                tokenizer,
+                add_special_tokens=False,
             )
-            seq_len = processed["input_ids"].shape[0]
 
+            seq_len = input_ids.shape[1]
             caption_len = min(len(cap_ann_ids), seq_len - caption_start)
             cap_ann_ids = cap_ann_ids[:caption_len]
 
             max_segments = max((len(ids) for ids in cap_ann_ids), default=1)
-            segment_ids = torch.full((seq_len, max_segments), -1, dtype=torch.long)
+            ids_tensor = torch.full(
+                (seq_len, max_segments),
+                -1,
+                dtype=torch.long,
+            )
 
             for j, ann_ids in enumerate(cap_ann_ids, start=caption_start):
                 for k, ann_id in enumerate(ann_ids):
-                    segment_ids[j, k] = ann_id
-        else:
-            segment_ids = None
+                    ids_tensor[j, k] = ann_id
 
-        return {
-            **processed,
-            "labels": labels,
-            "mask": mask,
-            "segment_ids": segment_ids,
-        }
+            segment_ids.append(ids_tensor)
 
-    return tokenize_fn
+        processed["labels"] = labels
+        return processed, masks, segment_ids
+
+    return collate_fn
 
 
 def llava_150k_instruct_dataset(
@@ -152,12 +133,6 @@ def llava_150k_instruct_dataset(
     """
     data_files = {split: f"{data_cfg.llava_150k_dir}/{split}/data-00000-of-00001.arrow"}
     ds = load_dataset("arrow", data_files=data_files, split=split)
-    processor = AutoProcessor.from_pretrained(data_cfg.processor)
-    mask_dir = Path(data_cfg.coconut.masks_dir)
-    image_dir = Path(data_cfg[split].images_dir)
-    suffix_tokens = _compute_suffix_tokens(processor)
-
-    ds.set_transform(build_transform(processor, mask_dir, image_dir, suffix_tokens))
     return ds
 
 

@@ -15,8 +15,6 @@ defaults:
   - coconut
   - _self_
 
-processor: llava-hf/llava-1.5-7b-hf
-
 llava_150k_dir: ${oc.env:PROJECT_DIR}/data/llava_coconut_pancap_150k
 
 # Dataset configuration
@@ -26,10 +24,14 @@ dataset:
 # Collator configuration
 collator:
   _target_: finetune.data.llava_150k.dataset.make_collate_fn
+  masks_dir: ${..coconut.masks_dir}
+  images_dir: ${..train.images_dir}
   # processor will be passed at runtime via partial
 
 eval_collator:
   _target_: finetune.data.llava_150k.dataset.make_collate_fn
+  masks_dir: ${..coconut.masks_dir}
+  images_dir: ${..validation.images_dir}
   # processor will be passed at runtime via partial
 
 # Train/val splits — LLaVA-150k is sampled entirely from COCO train2017,

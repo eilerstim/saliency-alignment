@@ -112,20 +112,18 @@ class FineTuner(L.LightningModule):
 
         scheduler = instantiate(self.cfg.scheduler, optimizer=optimizer)
         return [optimizer], [scheduler]
-
-    def setup(self, stage: str | None = None) -> None:
-        self.train_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
-        self.val_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
         
     def train_dataloader(self) -> DataLoader:
         # Get collator function and bind processor via partial
+        train_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
         collate_fn = instantiate(self.cfg.data.collator, processor=self.processor)
 
         dl_kwargs = getattr(self.cfg, "dataloader", {})
-        return DataLoader(self.train_dataset, collate_fn=collate_fn, **dl_kwargs)
+        return DataLoader(train_dataset, collate_fn=collate_fn, **dl_kwargs)
 
     def val_dataloader(self) -> DataLoader:
         # Get eval collator function and bind processor via partial
+        val_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
         collate_fn = instantiate(self.cfg.data.eval_collator, processor=self.processor)
 
         dl_kwargs = OmegaConf.to_container(
@@ -133,4 +131,4 @@ class FineTuner(L.LightningModule):
         )
         dl_kwargs["shuffle"] = False  # No shuffling for validation
 
-        return DataLoader(self.val_dataset, collate_fn=collate_fn, **dl_kwargs)
+        return DataLoader(val_dataset, collate_fn=collate_fn, **dl_kwargs)
