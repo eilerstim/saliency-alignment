@@ -5,30 +5,41 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, ProcessorMixin
 
+from finetune.accumulator import AnnotatedAccumulator
 from finetune.criterion import Criterion
+from vl_saliency.config import SaliencyConfig
 
 
 class FineTuner(L.LightningModule):
     """Fine-tuning module for a pre-trained model."""
 
     def __init__(
-        self, cfg: DictConfig, model: PreTrainedModel, processor: ProcessorMixin
+        self,
+        cfg: DictConfig,
+        model: PreTrainedModel,
+        processor: ProcessorMixin,
     ):
         super().__init__()
         self.cfg = cfg
         self.model = model
         self.processor = processor
+        self.saliency_config = SaliencyConfig.from_model(model)
 
         # Instantiate auxiliary loss function
         self.auxiliary_loss: Criterion = instantiate(self.cfg.loss)
 
-    def forward(self, **batch):
-        return self.model(**batch, return_dict=True)
+    def forward(self, masks: list[torch.Tensor | None], **batch):
+        trace = AnnotatedAccumulator(
+            config=self.saliency_config,
+            masks=masks,
+            **batch,
+        )
+        return self.model(**batch, saliency=trace, return_dict=True)
 
     def training_step(self, batch: tuple[dict, list, list], batch_idx: int):
         # Forward pass with saliency accumulation
         batch, masks, segment_ids = batch
-        outputs = self(**batch)
+        outputs = self(**batch, masks=masks)
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -58,7 +69,7 @@ class FineTuner(L.LightningModule):
     def validation_step(self, batch: tuple[dict, list, list], batch_idx: int):
         # Forward pass with saliency accumulation
         batch, masks, segment_ids = batch
-        outputs = self(**batch)
+        outputs = self(**batch, masks=masks)
         loss = outputs.loss
 
         # Calculate auxiliary loss
@@ -112,7 +123,7 @@ class FineTuner(L.LightningModule):
 
         scheduler = instantiate(self.cfg.scheduler, optimizer=optimizer)
         return [optimizer], [scheduler]
-        
+
     def train_dataloader(self) -> DataLoader:
         # Get collator function and bind processor via partial
         train_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="train")
@@ -123,7 +134,9 @@ class FineTuner(L.LightningModule):
 
     def val_dataloader(self) -> DataLoader:
         # Get eval collator function and bind processor via partial
-        val_dataset = instantiate(self.cfg.data.dataset, self.cfg.data, split="validation")
+        val_dataset = instantiate(
+            self.cfg.data.dataset, self.cfg.data, split="validation"
+        )
         collate_fn = instantiate(self.cfg.data.eval_collator, processor=self.processor)
 
         dl_kwargs = OmegaConf.to_container(

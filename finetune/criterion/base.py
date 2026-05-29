@@ -25,38 +25,43 @@ class Criterion(ABC):
     def __call__(
         self,
         labels: Int[Tensor, "B S"],
-        segment_ids: list[Int[Tensor, "B S M"]],
+        segment_ids: list[Int[Tensor, "B S M"] | None],
         preds: Float[Tensor, "B T V"],
         saliency: SaliencyGrid,
-        masks: list[Tensor],
+        masks: list[Tensor | None],
     ) -> Float[Tensor, "1"]:
         """Compute the auxiliary loss.
 
         Args:
             labels (torch.Tensor): Ground truth labels.  [batch_size, seq_len]
-            segment_ids (torch.Tensor): Corresponding image segments for each item.
+            segment_ids (list[torch.Tensor | None]): Corresponding image segments for each item.
             preds (torch.Tensor): The model prediction logits. [batch_size, seq_len, vocab_size]
             saliency (SaliencyGrid): The attention weights from the model.
-            masks (list[torch.Tensor]): Binary annotation masks. List of [H, W]. Zero tensors indicate no annotation.
+            masks (list[torch.Tensor | None]): Binary annotation masks. List of [H, W]. Zero tensors indicate no annotation.
 
         Returns:
             Tensor: Computed auxiliary loss.
         """
 
+        if saliency is None:
+            return torch.tensor(0.0, device=preds.device)
+
         losses: list[Tensor] = []
+        i = 0
         for b in range(saliency.batch_size):
             if masks[b] is None:
                 continue  # Skip if no annotation for this sample
 
             mask = masks[b]  # (H, W)
             attn = saliency.maps_for_image(
-                batch_idx=b, image_idx=0
+                batch_idx=i, image_idx=0
             )  # (gen_len, patch_H, patch_W)
+            i += 1
 
             gen_ids = labels[b] != -100
             seg_ids = segment_ids[b]
-            
-            gen_ids = gen_ids[:seg_ids.shape[0]]
+
+            gen_ids = gen_ids[: seg_ids.shape[0]]
             seg_ids = seg_ids[gen_ids]  # (gen_len, max_segments)
 
             gen_len = seg_ids.shape[0]
@@ -95,6 +100,8 @@ class Criterion(ABC):
 
             loss = self.compute_loss(attn, token_mask)
             losses.append(loss)
+
+            b += 1
 
         if len(losses) == 0:
             return torch.tensor(0.0, device=preds.device)

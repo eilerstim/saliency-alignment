@@ -180,12 +180,14 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
                 values, dtype=torch.long
             )
 
-        return {
-            **batch,
-            "input_ids": input_ids,
-            "labels": labels,
-            "segment_ids": segment_ids_tensor,
-            "masks": panoptic_masks,
-        }
+        return (
+            {
+                **batch,
+                "input_ids": input_ids,
+                "labels": labels,
+            },
+            panoptic_masks,
+            segment_ids_tensor,
+        )
 
     return collate_fn

@@ -21,7 +21,9 @@ def make_collate_fn(
     processor: ProcessorMixin,
     masks_dir: str,
     images_dir: str,
-) -> Callable[[list[dict]], tuple[dict, list[torch.Tensor | None], list[torch.Tensor | None]]]:
+) -> Callable[
+    [list[dict]], tuple[dict, list[torch.Tensor | None], list[torch.Tensor | None]]
+]:
     tokenizer = processor.tokenizer
     suffix_tokens = _compute_suffix_tokens(processor)
 
@@ -36,9 +38,7 @@ def make_collate_fn(
             image = Image.open(f"{images_dir}/{ex['id']}.jpg").convert("RGB")
 
             if ex["segments"]:
-                mask = torch.from_numpy(
-                    np.load(f"{masks_dir}/{ex['id']}.npy")
-                ).long()
+                mask = torch.from_numpy(np.load(f"{masks_dir}/{ex['id']}.npy")).long()
 
                 assistant_text = text[-1]["content"][-1]["text"]
                 parsed_segments = parse_annotated_caption(assistant_text)
