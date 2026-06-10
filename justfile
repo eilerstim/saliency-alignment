@@ -20,13 +20,13 @@ follow-err:
 # Format and lint
 [group('code quality')]
 ruff:
-    ruff format .
-    ruff check . --fix
+    uvx ruff format .
+    uvx ruff check . --fix
 
 # Type checking
 [group('code quality')]
-mypy:
-    mypy .
+type-check:
+    uvx pyrefly check .
 
 # Watch current user's squeue output
 [group('slurm')]

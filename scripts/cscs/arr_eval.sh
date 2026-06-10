@@ -16,6 +16,18 @@
 set -euo pipefail
 mkdir -p logs
 
+export PYTHONPATH="$SCRATCH/saliency-alignment/eval${PYTHONPATH:+:$PYTHONPATH}"
+
+# print lmms_eval and make sure that the module is imp
+python3 - <<'PY'
+import sys, lmms_eval
+print("python:", sys.executable)
+print("lmms_eval:", lmms_eval.__file__)
+print("first sys.path entries:")
+for p in sys.path[:5]:
+    print(" ", p)
+PY
+
 MODEL_NAME="$1"
 
 # if second arg is set to true, it's a hf model name

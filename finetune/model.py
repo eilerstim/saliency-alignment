@@ -1,3 +1,9 @@
+import json
+import os
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import lightning.pytorch as pl
 import torch
 from huggingface_hub import hf_hub_download
 from omegaconf import DictConfig, OmegaConf
@@ -13,12 +19,18 @@ from transformers import (
     ProcessorMixin,
 )
 
+from finetune.strategy import load_lt_state
+
+if TYPE_CHECKING:
+    from finetune.module import FineTuner
+
 
 def build_model(
     cfg: DictConfig,
     lora_cfg: DictConfig,
 ) -> tuple[PreTrainedModel, ProcessorMixin]:
     """Instantiate model and processor, optionally wrapped with LoRA adapters."""
+    model: PreTrainedModel
 
     if hasattr(cfg, "instruction_tuned") and not cfg.instruction_tuned:
         config = LlavaConfig.from_pretrained(cfg.name)
@@ -109,16 +121,19 @@ def build_model(
     return model, processor
 
 
-if __name__ == "__main__":
-    import hydra
-    from omegaconf import DictConfig
+def save_model(cfg: DictConfig, trainer: pl.Trainer, module: "FineTuner"):
+    """Save the model and processor to the specified directory."""
+    # Gather and save model state dict on rank 0
+    state = load_lt_state(cfg.strategy, trainer, module.model)
 
-    @hydra.main(
-        version_base="1.3",
-        config_path="../configs/model",
-        config_name="llava-pretrain-vicuna-7b",
-    )
-    def main(cfg: DictConfig):
-        model, processor = build_model(cfg)
+    rank = int(os.environ["SLURM_LOCALID"])
+    if rank == 0:
+        save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
+        module.model.save_pretrained(save_dir, state_dict=state)
+        module.processor.save_pretrained(save_dir)
 
-    main()
+        # Fix tokenizer_class for vLLM compatibility
+        tok_config_path = Path(save_dir) / "tokenizer_config.json"
+        tok_config = json.loads(tok_config_path.read_text())
+        tok_config["tokenizer_class"] = "LlamaTokenizer"
+        tok_config_path.write_text(json.dumps(tok_config, indent=2))

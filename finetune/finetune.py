@@ -1,79 +1,60 @@
-import json
-import logging
-import os
-from pathlib import Path
-
 import hydra
-import lightning as L
+import lightning.pytorch as pl
 import torch
 from hydra.core.hydra_config import HydraConfig
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
-from lightning.pytorch.loggers import CSVLogger, WandbLogger
-from omegaconf import DictConfig, OmegaConf
+from lightning.pytorch.callbacks import (
+    DeviceStatsMonitor,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
+from lightning.pytorch.loggers import CSVLogger, Logger, WandbLogger
+from omegaconf import DictConfig
 
-from finetune.lightning import FineTuner
-from finetune.model import build_model
-from finetune.strategy import load_lt_state, load_strategy
+from finetune.model import save_model
+from finetune.module import FineTuner
+from finetune.strategy import load_strategy
 from vl_saliency import Saliency
 
-logger = logging.getLogger(__name__)
+
+def logger(cfg: DictConfig, output_dir: str) -> Logger:
+    """Return a logger based on the configuration (either WandbLogger or CSVLogger)"""
+    return (
+        WandbLogger(save_dir=output_dir, **cfg.wandb, config=cfg)
+        if cfg.wandb is not None
+        else CSVLogger(save_dir=output_dir)
+    )
 
 
-@hydra.main(version_base="1.3", config_path="../configs", config_name="config")
+def callbacks(cfg: DictConfig, output_dir: str) -> list[pl.Callback]:
+    """Return a list of callbacks based on the configuration"""
+    cb: list[pl.Callback] = [
+        ModelCheckpoint(dirpath=output_dir, **cfg.callbacks.model_checkpoint)
+    ]
+    if cfg.wandb is None:  # wandb already tracks these metrics
+        cb.extend([DeviceStatsMonitor(), LearningRateMonitor("step")])
+    return cb
+
+
+@hydra.main(config_path="../configs", config_name="config", version_base="1.3")
 def finetune(cfg: DictConfig):
-    # Get local rank for distributed training
-    rank = int(os.environ["SLURM_LOCALID"])
+    """Train the model based on the provided configuration."""
 
-    # Log Hydra working directory
-    hydra_wd = HydraConfig.get().runtime.output_dir
-    if rank == 0:
-        logger.info(f"Hydra working directory: {hydra_wd}")
-
-    # Set seed for reproducibility
-    L.seed_everything(cfg.seed)
+    pl.seed_everything(cfg.get("seed", 42))
     torch.set_float32_matmul_precision("high")
 
-    # Prepare model and processor as defined in config
-    model, processor = build_model(cfg.model, cfg.lora)
+    hydra_wd = HydraConfig.get().runtime.output_dir
 
-    # Loggers
-    loggers = [CSVLogger(save_dir=f"{hydra_wd}/logs", name="training_logs")]
-    if cfg.wandb:
-        loggers.append(
-            WandbLogger(
-                **cfg.wandb,
-                save_dir=hydra_wd,
-                config=OmegaConf.to_container(cfg, resolve=True),
-            )
-        )
-
-    # Instantiate fine-tuner and trainer
-    fine_tuner = FineTuner(cfg, model, processor)
-    trainer = L.Trainer(
-        default_root_dir=hydra_wd,
-        logger=loggers,
+    module = FineTuner(cfg)
+    trainer = pl.Trainer(
+        logger=logger(cfg, hydra_wd),
+        callbacks=callbacks(cfg, hydra_wd),
         strategy=load_strategy(cfg.strategy),
         plugins=[SLURMEnvironment()],
         **cfg.trainer,
     )
 
-    # Fine-tuning
-    with Saliency(model, backend="torch_eager"):
-        trainer.fit(fine_tuner)
+    with Saliency(module.model, backend="torch_eager"):
+        trainer.fit(module)
 
-    # Gather and save model state dict on rank 0
-    state = load_lt_state(cfg.strategy, trainer, model)
-
-    # Save model and processor
-    if rank == 0:
-        save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
-        model.save_pretrained(save_dir, state_dict=state)
-        processor.save_pretrained(save_dir)
-
-        # Fix tokenizer_class for vLLM compatibility
-        tok_config_path = Path(save_dir) / "tokenizer_config.json"
-        tok_config = json.loads(tok_config_path.read_text())
-        tok_config["tokenizer_class"] = "LlamaTokenizer"
-        tok_config_path.write_text(json.dumps(tok_config, indent=2))
-
-        logger.info(f"Model weights saved to {save_dir}")
+    save_model(cfg, trainer, module)

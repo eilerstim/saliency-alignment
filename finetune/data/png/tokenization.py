@@ -78,7 +78,7 @@ def tokenize_png_caption(
     # Add special tokens if requested
     if add_special_tokens:
         if tokenizer.bos_token_id is not None:
-            all_token_ids = [tokenizer.bos_token_id] + all_token_ids
+            all_token_ids = [tokenizer.bos_token_id, *all_token_ids]
             all_segment_ids = [[]] + all_segment_ids
         if tokenizer.eos_token_id is not None:
             all_token_ids = all_token_ids + [tokenizer.eos_token_id]

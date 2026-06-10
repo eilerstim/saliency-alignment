@@ -433,10 +433,7 @@ def print_per_layer_analysis(
             print(f"\n{proj} — pairwise top-{top_k} Jaccard overlap:")
             for i, (la, sa) in enumerate(run_items):
                 for lb, sb in run_items[i + 1 :]:
-                    if sa or sb:
-                        jaccard = len(sa & sb) / len(sa | sb)
-                    else:
-                        jaccard = 0.0
+                    jaccard = len(sa & sb) / len(sa | sb) if sa or sb else 0.0
                     shared = sorted(sa & sb)
                     print(f"  {la:<40s} vs {lb:<40s} J={jaccard:.2f}  shared={shared}")
 

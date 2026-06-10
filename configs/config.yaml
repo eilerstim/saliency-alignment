@@ -6,6 +6,7 @@ defaults:
   - trainer
   - dataloader
   - lora
+  - callbacks
   - _self_
 
 seed: 42

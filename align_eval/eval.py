@@ -115,10 +115,12 @@ def evaluate(cfg: DictConfig) -> None:
         )
 
         local: list[torch.Tensor] = []
-        for i, batch in enumerate(dataloader):
+        for i, (batch, masks, segment_ids) in enumerate(dataloader):
             if batch is None:
                 local.append(nan_pad(bs))
                 continue
+            batch["masks"] = masks
+            batch["segment_ids"] = segment_ids
             batch = {
                 k: v.to(fabric.device) if isinstance(v, torch.Tensor) else v
                 for k, v in batch.items()

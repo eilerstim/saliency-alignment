@@ -19,10 +19,12 @@ export USE_LORA=${USE_LORA:-false}
 
 MODEL=llava-pretrain-vicuna-7b
 CRITERION="kl"
-LAMBDA=0.5
+LAMBDA=0.1
 RUN_ID_SUFFIX="instruction-tune"
 
 RUN_ID="${MODEL}_${CRITERION}_w${LAMBDA}${RUN_ID_SUFFIX:+_${RUN_ID_SUFFIX}}"
+
+RUN_ID="llava-pretrain-vicuna-7b_kl_w0.5_instruction-tune-from-lightning-ckpt-merged"
 
 EXTRA_OVERRIDES=""
 if [ "${USE_LORA}" = "true" ]; then
