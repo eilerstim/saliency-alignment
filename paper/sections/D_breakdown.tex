@@ -1,0 +1,45 @@
+This appendix expands the consolidated downstream results (\Cref{tab:bench}) into the per-component, per-loss breakdown from our evaluation round, and adds two measurements the main table omits: general visual question answering (GQA) and a second counting benchmark (TallyQA, FSC-147). All numbers are zero-shot.
+
+\paragraph{Capability preservation.}
+\Cref{tab:gqa_pope} reports GQA and POPE. The picture sharpens the dissociation of \Cref{sec:analysis-pheno}: aligning the \emph{language model} (alone or with the projector) leaves general VQA and hallucination essentially untouched---POPE F1 even ticks up---whereas aligning the \emph{projector alone} degrades both markedly (GQA $0.606\!\to\!0.580$, POPE F1 $0.839\!\to\!0.721$). This is consistent with the drift analysis (\Cref{sec:analysis-where}): the projector-only run moves the projector hardest, feeding the frozen language model visual features that have drifted off its training distribution.
+
+\begin{table}[h]
+\centering
+\caption{General VQA and hallucination (zero-shot). Higher is better; best per column in \textbf{bold}. Aligning the language model preserves capability; aligning the projector alone degrades it.}
+\label{tab:gqa_pope}
+\vskip 0.1in
+\small
+\begin{tabular}{lccc}
+\toprule
+Variant & GQA acc. & POPE acc. & POPE F1 \\
+\midrule
+LLaVA-1.5-7B (base)        & \textbf{0.606} & 0.854 & 0.839 \\
+Caption SFT ($\lambda{=}0$) & 0.602 & 0.857 & 0.844 \\
+KL align, projector only   & 0.580 & 0.778 & 0.721 \\
+KL align, LM only          & 0.596 & \textbf{0.859} & \textbf{0.846} \\
+KL align, LM + projector   & 0.599 & 0.852 & 0.836 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Counting.}
+\Cref{tab:counting} reports TallyQA accuracy as a function of which component is trained and whether the alignment loss is on. The pattern is striking: training the \emph{projector} improves counting (even without the loss, $40.96\!\to\!42.67$; with it, $45.06$), while training the \emph{language model} degrades it ($\to\!35.82$ without the loss, $34.38$ with), and the joint run follows the language model down. The alignment loss does not create these effects so much as \emph{amplify} each component's native direction.
+
+Crucially, language-model alignment is exactly the configuration that produces the largest saliency gains (\Cref{tab:align}) yet the worst counting---so across components, saliency-map quality and counting accuracy are not merely uncorrelated but \emph{anti}-correlated. This is the same message as the attention-overlap-vs-counting null of \Cref{app:counting}, now seen across training configurations. (Counting benchmarks themselves disagree on the projector, which is best here on TallyQA but worst on CountBench in \Cref{tab:bench}; the robust signal is that language-model alignment never improves counting despite producing the best maps.) FSC-147 is near chance for every variant ($\approx 5$--$6\%$ accuracy, with diverging mean error), so we omit it from the table; the models simply cannot do open-set counting at these magnitudes.
+
+\begin{table}[h]
+\centering
+\caption{TallyQA counting accuracy (\%) by trained component and loss. Base (no fine-tuning) scores $40.96$. Training the projector helps counting; training the language model hurts it; the loss amplifies the component's direction.}
+\label{tab:counting}
+\vskip 0.1in
+\small
+\begin{tabular}{lcc}
+\toprule
+Trained component & SFT ($\lambda{=}0$) & + KL align ($\lambda{=}0.5$) \\
+\midrule
+Projector            & 42.67 & \textbf{45.06} \\
+Language model       & 35.82 & 34.38 \\
+LM + projector       & 37.25 & 33.57 \\
+\bottomrule
+\end{tabular}
+\end{table}
