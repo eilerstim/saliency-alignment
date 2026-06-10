@@ -11,7 +11,7 @@ We study the objective under two recipes. The first is the focus of our analysis
 
 \subsection{Evaluation}
 \label{sec:metrics}
-We evaluate on two axes. Because the objective is designed to change \emph{where} the model attends, we first measure attention localization directly, with three complementary \emph{intrinsic} metrics on a held-out COCONut split we fully control; we then test whether this sharper attention carries over to a broad \emph{downstream} suite. Some downstream benchmarks contain COCO images~\citep{han2024coco}, and so overlap our training data; we mark these with $\star$ in \Cref{tab:bench}.
+We evaluate on two axes. Because the objective is designed to change \emph{where} the model attends, we first measure attention localization directly, with three complementary \emph{intrinsic} metrics on a held-out COCONut split we fully control; we then test whether this sharper attention carries over to a broad \emph{downstream} suite. Some downstream benchmarks draw on COCO images and so may overlap our training data; we mark these with $\star$ in \Cref{tab:bench} to flag this potential contamination.
 
 \textbf{Intrinsic metrics.} For each grounded token we measure how well its saliency localizes to its mask, using three complementary metrics, each computed per supervised token, averaged (ignoring undefined cases) over an image's tokens, then over images.
 \emph{Attention Mass Ratio (AMR)}, chance-normalized, is the fraction of saliency mass inside the mask divided by the chance level $|\mathbf{M}_t|/HW$:
