@@ -33,15 +33,6 @@
 % if you use cleveref..
 \usepackage[capitalize,noabbrev]{cleveref}
 
-% Placeholder for a result not yet plugged in (replace with the measured value).
-\newcommand{\tbd}{{\sffamily\small ??}}
-% Figure-cell placeholder: \figph{<side length>}{<label>}. Replace each call with
-% \includegraphics[width=<side>]{figures/<name>.png} once the panels are exported.
-\newcommand{\figph}[2]{%
-  \setlength{\fboxsep}{0pt}%
-  \fbox{\parbox[c][#1][c]{#1}{\centering\ttfamily\footnotesize #2\\[3pt]\normalfont\itshape (placeholder)}}%
-}
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % THEOREMS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
