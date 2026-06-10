@@ -10,11 +10,13 @@ We compare $\mathbf{S}_t$ against the target distribution that places probabilit
 \end{equation}
 and penalize their divergence. Our primary objective uses the Kullback--Leibler divergence,
 \begin{equation}
+\begin{aligned}
 \mathcal{L}_{\text{align}}
-= \frac{1}{|\mathcal{T}|} \sum_{t \in \mathcal{T}}
-\mathrm{KL}\!\left(\mathbf{T}_t \,\|\, \mathbf{S}_t\right)
-= \frac{1}{|\mathcal{T}|} \sum_{t \in \mathcal{T}} \sum_{i,j}
+&= \frac{1}{|\mathcal{T}|} \sum_{t \in \mathcal{T}}
+\mathrm{KL}\!\left(\mathbf{T}_t \,\|\, \mathbf{S}_t\right) \\
+&= \frac{1}{|\mathcal{T}|} \sum_{t \in \mathcal{T}} \sum_{i,j}
 \mathbf{T}_{t,ij} \log \frac{\mathbf{T}_{t,ij}}{\mathbf{S}_{t,ij}} .
+\end{aligned}
 \label{eq:align}
 \end{equation}
 Because the target $\mathbf{T}_t$ is fixed, minimizing $\mathrm{KL}(\mathbf{T}_t \,\|\, \mathbf{S}_t)$ is mass-covering: it drives $\mathbf{S}_t$ to put probability everywhere inside the mask and is heavily penalized wherever the mask is occupied but the saliency is near zero, encouraging the map to cover the \emph{whole} referent rather than collapse onto a single patch. As a point of comparison we also implement a squared-error variant, $\mathcal{L}_{\text{align}}^{\text{MSE}} = \frac{1}{|\mathcal{T}|}\sum_{t}\sum_{ij}(\mathbf{S}_{t,ij}-\mathbf{T}_{t,ij})^2$, and use the KL form by default.

@@ -11,7 +11,7 @@ We study the objective under two recipes. The first is the focus of our analysis
 
 \subsection{Evaluation}
 \label{sec:metrics}
-We evaluate on two axes: \emph{intrinsic} attention localization on held-out COCONut images, and \emph{downstream} task performance on a benchmark suite. Because public grounding and counting benchmarks are largely built on COCO~\citep{han2024coco}, which overlaps our training images, the intrinsic metrics---computed on a held-out split we fully control---are our primary measure; the downstream suite is chosen to limit COCO overlap.
+We evaluate on two axes: \emph{intrinsic} attention localization on held-out COCONut images, and \emph{downstream} task performance on a benchmark suite. Because public grounding and counting benchmarks are largely built on COCO~\citep{han2024coco}, which overlaps our training images, the intrinsic metrics---computed on a held-out split we fully control---are our primary measure; the downstream suite is chosen to limit COCO overlap. These intrinsic metrics are held-out but remain \emph{in-distribution} (same image source and annotation style as training), and AMR in particular is the test-time analog of the training target; we treat this circularity explicitly in \Cref{sec:results-quant,sec:limitations}.
 
 \textbf{Intrinsic metrics.} For each grounded token we measure how well its saliency localizes to its mask, using three complementary metrics, each computed per supervised token, averaged (ignoring undefined cases) over an image's tokens, then over images.
 \emph{Attention Mass Ratio (AMR)}, chance-normalized, is the fraction of saliency mass inside the mask divided by the chance level $|\mathbf{M}_t|/HW$:

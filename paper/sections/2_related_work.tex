@@ -6,7 +6,7 @@ Further work confirms that VLM attention is frequently mislocalized, with excess
 Finally, attention allocation varies substantially across layers and heads. Rather than being uniformly distributed, grounding-relevant attention is often concentrated in a small subset of specialized heads, which exhibit more accurate localization and improved interpretability~\citep{kang2025your, kim2025interpreting}. These findings suggest that attention mechanisms constitute a promising intervention point for improving visual grounding in VLMs.
 
 \textbf{Supervised Representation Objectives.} 
-Several lines of work explore supervised objectives that align internal model representations with external visual signals. Representation alignment  (REPA) has proven effective in other generative settings, for example diffusion models,where aligning hidden states with pretrained visual encoders improves both training efficiency and generation quality~\citep{yurepresentation}. 
+Several lines of work explore supervised objectives that align internal model representations with external visual signals. Representation alignment (REPA) has proven effective in other generative settings, for example diffusion models, where aligning hidden states with pretrained visual encoders improves both training efficiency and generation quality~\citep{yurepresentation}.
 
 Building on this idea, recent work aligns internal representations of VLMs with those of pretrained vision encoders, leading to improved visual grounding and multimodal reasoning~\citep{yoon2025visual}. However, such approaches operate on static visual features that are independent of the textual prompt and generated tokens, limiting their ability to capture context-dependent grounding behavior.
 
