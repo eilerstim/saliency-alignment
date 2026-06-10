@@ -47,3 +47,7 @@ figs/
 
 # Results
 results/
+
+# Paper build artifacts / deliverables
+texput.log
+/Saliency_Alignment_2025.zip
