@@ -1,0 +1,1 @@
+For the direct fine-tuning regime (\Cref{sec:regimes}), optimization uses AdamW (learning rate $2{\times}10^{-5}$), bf16-mixed precision, gradient checkpointing, a 3\% warmup with cosine decay, and FSDP across 4 GH200 GPUs, for $200$ steps, enough (as we show in \Cref{sec:results}) to reshape attention.
