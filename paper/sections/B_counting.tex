@@ -1,0 +1,9 @@
+Counting motivated much of this work, and we report here two negative results that shaped our focus on direct attention supervision.
+
+Counting is deceptively hard for VLMs: they must map visual features to a discrete numeral with no explicit enumeration mechanism. We observe that saliency maps localize cleanly to the relevant objects only when the count is small---typically fewer than five---suggesting that current models lean on holistic pattern recognition rather than individuated object identification as counts grow.
+
+\textbf{Count-specific fine-tuning does not sharpen saliency.} Contrary to results on unimodal vision transformers, where count supervision sharpens attention toward the relevant regions~\citep{paiss2023teachingclipcount}, we find this does not transfer to VLMs. Fine-tuning LLaVA-1.5-7B and Gemma~3~4B on PixMo-Count~\citep{deitke2024molmopixmoopenweights} improved counting accuracy by roughly $10\%$ but left saliency localization unchanged---accuracy and grounding moved independently.
+
+\textbf{Saliency overlap does not predict counting accuracy.} We tested whether a model's internal spatial focus tracks its counting accuracy, as it would if counting were grounded rather than purely linguistic. Extracting saliency under several attribution methods and measuring its overlap with ground-truth object masks on a COCO-derived subset of TallyQA~\citep{acharya2019tallyqa}, we found that saliency mass inside the annotated regions does \emph{not} correlate with correct counts.
+
+Together these results say that counting accuracy and attention localization are decoupled under the standard objective: improving the answer does not improve the looking, and \emph{vice versa}. This is precisely what motivates supervising localization directly, as in the main paper, rather than hoping it emerges from a task loss.

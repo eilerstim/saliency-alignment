@@ -1,0 +1,26 @@
+\subsection{Dataset and grounding signal}
+We fine-tune on COCONut-PanCap~\citep{deng2025coconut}, which pairs COCO images~\citep{lin2015microsoftcococommonobjects} with high-quality panoptic masks and human-verified, detailed captions. Crucially, each caption is \emph{grounded}: mentioned entities are tagged with the panoptic segment(s) they refer to, in the form \texttt{<id: text>} (or \texttt{<$id_1,\dots,id_k$: text>} for groups). We parse these tags to (i) recover the clean caption shown to the model and (ii) assign every caption token the segment id(s) it references; the per-token mask $\mathbf{M}_t$ of \Cref{sec:method} is then the union of the referenced segments in the panoptic mask. Relative to grounded-caption corpora such as GranD~\citep{rasheed2024glammpixelgroundinglarge} or PNG~\citep{gonzalez2021panopticnarrativegrounding}, COCONut-PanCap provides substantially denser annotations, yielding more supervised tokens per image. We use a deterministic split that holds out the last $10{,}000$ annotated images for validation and trains on the remainder; the same split is reused at evaluation so all reported metrics are computed on images the model never saw.
+
+\subsection{Model and training}
+We fine-tune LLaVA-1.5-7B with the objective of \Cref{eq:total} at $\lambda = 0.5$, using the model's own prompt template with the instruction \emph{``Describe the image in detail.''} and the clean caption as the target. The vision encoder is always frozen. Optimization uses AdamW (learning rate $2\times10^{-5}$), bf16-mixed precision, gradient checkpointing, and a 3\% linear warmup followed by cosine decay, run with fully-sharded data parallelism (FSDP) across 4 GH200 GPUs. We train for only $200$ optimization steps---enough, as we show, to substantially reshape attention---and extract saliency on the fly during the forward pass with an eager-attention backend.
+
+\textbf{Adaptation site (ablation).}
+Since the objective adds no parameters, the only structural choice is which component receives the gradient. We compare three trainable-component configurations, all with the identical KL objective: the multimodal \emph{projector} only, the \emph{language model} only, and \emph{both}. This isolates whether saliency must be reshaped in the cross-modal interface or inside the decoder, and feeds the mechanistic analysis of \Cref{sec:analysis}.
+
+\subsection{Intrinsic evaluation of attention localization}
+\label{sec:metrics}
+Most public grounding and counting benchmarks are themselves built on COCO~\citep{han2024coco}, which overlaps our training images and would confound a held-out comparison. We therefore evaluate \emph{intrinsically}: on the held-out split we measure how well the model's saliency for each grounded token localizes to that token's mask, using three complementary metrics. Each is computed per supervised token, averaged (ignoring undefined cases such as empty masks) over the tokens of an image, and then over images.
+
+\textbf{Attention Mass Ratio (AMR), chance-normalized.} The fraction of saliency mass that falls inside the mask, divided by the chance level $|\mathbf{M}_t|/HW$:
+\begin{equation}
+\mathrm{AMR}_t
+= \frac{\sum_{ij}\mathbf{S}_{t,ij}\,\mathbf{M}_{t,ij}\big/\sum_{ij}\mathbf{S}_{t,ij}}
+       {|\mathbf{M}_t|/HW} .
+\end{equation}
+$\mathrm{AMR}=1$ is uniform attention (no preference), ${>}1$ concentrates inside the mask, ${<}1$ outside. This is the test-time analog of our training target: \emph{what fraction of the attention budget landed inside the annotated region?}
+
+\textbf{Average Precision (AP).} Pixel-level area under the precision--recall curve, treating saliency as the score and mask membership as the label. Unlike AMR, which only sees total mass, AP rewards correctly \emph{ranking} in-mask pixels above out-of-mask ones, and so is sensitive to a few high-saliency pixels leaking outside the region even when most mass is correct.
+
+\textbf{Normalized Scanpath Saliency (NSS).} The mean $z$-score of the saliency inside the mask, after standardizing the map to zero mean and unit variance over the image. NSS yields a directly interpretable statement---``saliency at annotated pixels is on average $z$ standard deviations above the image-wide mean''---that the scale-free AMR and rank-based AP do not.
+
+For reference we report the same metrics for the unmodified LLaVA-1.5-7B (\emph{base}), and we track the validation cross-entropy and next-token accuracy to confirm that alignment does not degrade language modeling.

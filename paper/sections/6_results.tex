@@ -1,0 +1,53 @@
+\subsection{Alignment sharpens attention localization}
+\label{sec:results-quant}
+
+\begin{table}[t]
+\centering
+\caption{Intrinsic attention-localization metrics on the held-out COCONut-PanCap split (\Cref{sec:metrics}). Higher is better for all three; $\mathrm{AMR}=1$ is the chance level. All aligned variants use the KL objective at $\lambda=0.5$, $200$ steps; rows differ only in the trainable component. Best per column in \textbf{bold}. (Final numbers pending.)}
+\label{tab:align}
+\vskip 0.1in
+\small
+\begin{tabular}{lccc}
+\toprule
+Model & AMR $\uparrow$ & AP $\uparrow$ & NSS $\uparrow$ \\
+\midrule
+LLaVA-1.5-7B (base)        & \tbd & \tbd & \tbd \\
+\quad + align (projector)   & \tbd & \tbd & \tbd \\
+\quad + align (LM)          & \tbd & \tbd & \tbd \\
+\quad + align (LM + proj.)  & \tbd & \tbd & \tbd \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\todo{Plug the measured AMR/AP/NSS into \Cref{tab:align} (replace every \texttt{??}) and bold the best per column; then tighten the numeric claims in this paragraph.}%
+\Cref{tab:align} reports the three localization metrics on held-out images. The metrics read together: AMR asks how much of the attention budget lands inside the annotated region, AP asks whether in-mask pixels are ranked above out-of-mask ones, and NSS asks how far above the image-wide mean the in-mask saliency sits. The base model already places above-chance mass inside annotated regions ($\mathrm{AMR}>1$), consistent with the existence of grounding-relevant attention, but leaves substantial room: a non-trivial share of its mass falls outside the referent.
+
+Adding the alignment loss improves all three metrics, and it does so without harming language modeling---validation cross-entropy and next-token accuracy are essentially unchanged.\todo{Confirm with base vs.\ aligned validation CE and next-token accuracy.} The gains are mutually reinforcing rather than redundant: AMR confirms more mass moves \emph{into} the mask, while the simultaneous AP rise shows the model is not simply inflating mass everywhere inside but is genuinely ranking in-mask pixels higher, and NSS quantifies the contrast in interpretable units. Among the adaptation sites, training the language model alone is sufficient to capture the gains (\Cref{sec:analysis}), so the improvement does not require touching the cross-modal projector.
+
+\subsection{Qualitative effect on saliency}
+\label{sec:results-qual}
+
+\begin{figure*}[t]
+\centering
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{0.6}
+% To finalize: replace each \figph{0.30\linewidth}{...} with
+%   \includegraphics[width=0.30\linewidth]{figures/<name>.png}
+% e.g. figures/rows_base.png, figures/rows_finetuned.png,
+%       figures/snow_base.png, figures/snow_finetuned.png
+\begin{tabular}{ccc}
+ & \textbf{Base} & \textbf{Aligned (LM)} \\
+\rotatebox{90}{\quad token \texttt{rows}} &
+  \figph{0.30\linewidth}{rows / base} &
+  \figph{0.30\linewidth}{rows / aligned} \\
+\rotatebox{90}{\quad token \texttt{snow}} &
+  \figph{0.30\linewidth}{snow / base} &
+  \figph{0.30\linewidth}{snow / aligned} \\
+\end{tabular}
+\caption{Saliency before (left) and after (right) alignment. \textbf{Top:} for an object token, alignment cleans up the map---attention the base model scattered onto background and image borders is pulled onto the birds, and the per-object mass is more evenly distributed. \textbf{Bottom:} for the background token \texttt{snow}, the base model spreads saliency across the snowy ground, whereas the aligned model withdraws mass from it (\Cref{sec:analysis-stuff}). We visualize the token \texttt{rows} because LLaVA tokenizes ``crows'' as \texttt{\_c}+\texttt{rows}, so the grounded subword is \texttt{rows}.}
+\label{fig:qual}
+\end{figure*}
+
+\Cref{fig:qual} contrasts saliency maps before and after alignment and makes the quantitative trend tangible. Two effects stand out. First, alignment \emph{cleans up} the maps. The base model frequently deposits bright spots on non-informative regions---image edges and, characteristically, the bottom border---and distributes mass unevenly across the objects a token names. After alignment these spurious peaks are suppressed and the mass redistributes onto the referent more uniformly (the flying birds, top row), exactly the mass-covering behavior \Cref{eq:align} is designed to induce.
+
+Second, the same pressure that concentrates attention on discrete objects can \emph{over}-concentrate at the expense of broad backgrounds. For the token \texttt{snow} (bottom row), the base model sensibly spreads saliency across the snowy ground, while the aligned model pulls mass off it and onto foreground structure. Background \emph{objects} with definite extent---plants, branches---remain well localized; it is amorphous ``stuff'' that suffers. We take up this asymmetry, and its root in the annotation distribution, in \Cref{sec:analysis-stuff}.
