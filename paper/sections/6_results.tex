@@ -54,22 +54,20 @@ This gap between large intrinsic gains and flat downstream numbers is the centra
 \subsection{Qualitative effect on saliency}
 \label{sec:results-qual}
 
-\begin{figure*}[tp]
+\begin{figure*}[t]
 \centering
 \setlength{\tabcolsep}{2pt}
 \begin{tabular}{@{}cc@{}}
-\includegraphics[width=0.40\linewidth]{figures/crows_base.png} &
-\includegraphics[width=0.40\linewidth]{figures/crows_finetuned.png} \\
-\includegraphics[width=0.40\linewidth]{figures/snow_base.png} &
-\includegraphics[width=0.40\linewidth]{figures/snow_finetuned.png} \\
+\includegraphics[width=0.45\linewidth]{figures/crows_base.png} &
+\includegraphics[width=0.45\linewidth]{figures/crows_finetuned.png} \\
 \end{tabular}
-\caption{Saliency before (left) and after (right) alignment (\Cref{sec:results-qual}). \textbf{Top:} for an object token, alignment cleans up the map: attention the base model scattered onto background and image borders is pulled onto the birds, and the per-object mass is more evenly distributed. \textbf{Bottom:} for the background token \texttt{snow}, the base model spreads saliency across the snowy ground, whereas the aligned model withdraws mass from it (\Cref{sec:analysis-stuff}). We visualize the token \texttt{rows} because LLaVA tokenizes ``crows'' as \texttt{\_c}+\texttt{rows}, so the grounded subword is \texttt{rows}.}
+\caption{Saliency before (left) and after (right) alignment for an object token (\Cref{sec:results-qual}). Alignment cleans up the map: attention the base model scattered onto background and image borders is pulled onto the birds, and the per-object mass is more evenly distributed. We visualize the token \texttt{rows} because LLaVA tokenizes ``crows'' as \texttt{\_c}+\texttt{rows}, so the grounded subword is \texttt{rows}.}
 \label{fig:qual}
 \end{figure*}
 
-\Cref{fig:qual} makes the metrics tangible through two representative cases; it is meant to illustrate the effect, not to quantify it (the systematic version is \Cref{tab:align}). First, alignment \emph{cleans up} the maps: the base model frequently deposits bright spots on non-informative regions (image edges and, characteristically, the bottom border) and distributes mass unevenly across the objects a token names, whereas after alignment these spurious peaks are suppressed and the mass redistributes onto the referent more uniformly (the flying birds, top row), exactly the mass-covering behavior \Cref{eq:align} induces.
+\Cref{fig:qual} makes the metrics tangible through two representative cases; it is meant to illustrate the effect, not to quantify it (the systematic version is \Cref{tab:align}). First, alignment \emph{cleans up} the maps: the base model frequently deposits bright spots on non-informative regions (image edges and, characteristically, the bottom border) and distributes mass unevenly across the objects a token names, whereas after alignment these spurious peaks are suppressed and the mass redistributes onto the referent more uniformly (the flying birds), exactly the mass-covering behavior \Cref{eq:align} induces.
 
-Second, the same pressure that concentrates attention on discrete objects can \emph{over}-concentrate at the expense of broad backgrounds. For the token \texttt{snow} (bottom row), the base model sensibly spreads saliency across the snowy ground, while the aligned model pulls mass off it and onto foreground structure. Background \emph{objects} with definite extent (plants, branches) remain well localized; it is amorphous ``stuff'' that suffers. We take up this asymmetry, and its root in the annotation distribution, in \Cref{sec:analysis-stuff}.
+Second, the same pressure that concentrates attention on discrete objects can \emph{over}-concentrate at the expense of broad backgrounds: for a token like \texttt{snow}, the aligned model withdraws the saliency the base model sensibly spread across the snowy ground, whereas background \emph{objects} with definite extent (plants, branches) stay well localized. We take up this asymmetry, and its root in the annotation distribution, in \Cref{sec:analysis-stuff}.
 
 \subsection{Toward downstream transfer: instruction tuning}
 \label{sec:results-it}
