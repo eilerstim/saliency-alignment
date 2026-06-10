@@ -13,7 +13,7 @@ We study the objective under two recipes. The first is the focus of our analysis
 \label{sec:metrics}
 We evaluate on two axes. Because the objective is designed to change \emph{where} the model attends, we first measure attention localization directly, with three complementary \emph{intrinsic} metrics on a held-out COCONut split we fully control; we then test whether this sharper attention carries over to a broad \emph{downstream} suite. Some downstream benchmarks draw on COCO images and so may overlap our training data; we mark these with $\star$ in \Cref{tab:bench} to flag this potential contamination.
 
-\textbf{Intrinsic metrics.} For each grounded token we measure how well its saliency localizes to its mask, using three complementary metrics, each computed per supervised token, averaged (ignoring undefined cases) over an image's tokens, then over images.
+\textbf{Intrinsic metrics.} For each grounded token we measure how well its saliency localizes to its mask, using three complementary metrics, each computed per supervised token, averaged over an image's tokens, then over images.
 \emph{Attention Mass Ratio (AMR)}, chance-normalized, is the fraction of saliency mass inside the mask divided by the chance level $|\mathbf{M}_t|/HW$:
 \begin{equation}
 \mathrm{AMR}_t
@@ -21,7 +21,19 @@ We evaluate on two axes. Because the objective is designed to change \emph{where
        {|\mathbf{M}_t|/HW},
 \end{equation}
 so $\mathrm{AMR}=1$ is chance, ${>}1$ concentrates inside the mask; it is the test-time analog of our training target.
-\emph{Average Precision (AP)} is the pixel-level area under the precision--recall curve with saliency as the score and mask membership as the label; unlike AMR it rewards correctly \emph{ranking} in-mask pixels above out-of-mask ones.
-\emph{Normalized Scanpath Saliency (NSS)} is the mean $z$-score of the saliency inside the mask after standardizing the map, giving the interpretable statement ``saliency at annotated pixels is $z$ standard deviations above the image-wide mean.''
+\emph{Average Precision (AP)} is the area under the pixel-level precision--recall curve, scoring pixels by saliency $\mathbf{S}_t$ against the binary label $\mathbf{M}_t$,
+\begin{equation}
+\begin{aligned}
+\mathrm{AP}_t &= \int_0^1 P_t(r)\,\mathrm{d}r, \\
+P_t(\tau) &= \frac{\sum_{ij}\mathbf{M}_{t,ij}\,\mathbf{1}[\mathbf{S}_{t,ij}\ge\tau]}
+                  {\sum_{ij}\mathbf{1}[\mathbf{S}_{t,ij}\ge\tau]},
+\end{aligned}
+\end{equation}
+with recall $r=R_t(\tau)=\tfrac{1}{|\mathbf{M}_t|}\sum_{ij}\mathbf{M}_{t,ij}\,\mathbf{1}[\mathbf{S}_{t,ij}\ge\tau]$ swept by the threshold $\tau$; unlike AMR it rewards correctly \emph{ranking} in-mask pixels above out-of-mask ones.
+\emph{Normalized Scanpath Saliency (NSS)} standardizes the map to zero mean and unit variance and averages it inside the mask,
+\begin{equation}
+\mathrm{NSS}_t = \frac{1}{|\mathbf{M}_t|}\sum_{ij}\mathbf{M}_{t,ij}\,\frac{\mathbf{S}_{t,ij}-\mu_t}{\sigma_t},
+\end{equation}
+where $\mu_t$ and $\sigma_t$ are the mean and standard deviation of $\mathbf{S}_t$ over the $HW$ pixels.
 
-\textbf{Downstream suite.} We report counting (CountBench~\citep{paiss2023teaching}), spatial reasoning (CV-Bench 2D/3D~\citep{tong2024cambrian}), general and fine-grained multimodal ability (MMStar~\citep{chen2024mmstar}, MMVP~\citep{tong2024mmvp}), low-level salient-object perception (the O3 split of SalBench~\citep{dahou2025salbench}) and hallucination (POPE~\citep{li2023pope}), and a blindness/bias probe (VLMs-are-Blind accuracy and a bias rate~\citep{rahmanzadehgervi2024blind}). A per-configuration breakdown, including general VQA (GQA~\citep{hudson2019gqa}) and a second counting benchmark (TallyQA~\citep{acharya2019tallyqa}, FSC-147~\citep{ranjan2021counting}), is deferred to \Cref{app:breakdown}. We also track validation cross-entropy and next-token accuracy to confirm language modeling is preserved.
+\textbf{Downstream suite.} Intrinsic metrics say whether attention moved; the downstream suite says whether it \emph{mattered}. We assemble a broad battery of public VLM benchmarks spanning the capabilities sharper grounding should most plausibly help---counting, 2D/3D spatial reasoning, general and fine-grained multimodal understanding, salient-object perception, and object hallucination---plus a blindness/bias probe for whether the model attends to the image at all. \Cref{tab:bench} reports the consolidated numbers; the full roster, citations, and per-configuration scores are deferred to \Cref{app:breakdown}. We also track validation cross-entropy and next-token accuracy to confirm language modeling is preserved.
