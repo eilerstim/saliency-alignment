@@ -20,9 +20,27 @@ Caption SFT ($\lambda{=}0$, LM+proj.) & 1.46 / 1.36 / 0.43 & 0.24 / 0.21 / 0.13 
 \end{tabular}
 \end{table*}
 
-\Cref{tab:align} reports the three localization metrics on held-out images, and the effect is large. The base model already places above-chance mass inside annotated regions ($\mathrm{AMR}=1.25$), confirming that grounding-relevant attention exists, but the alignment loss transforms it: training the language model raises mean AMR to $5.8$, a $4.6{\times}$ increase and still $4{\times}$ on the outlier-robust median ($1.19 \!\to\! 4.70$), while AP more than doubles ($0.22 \!\to\! 0.55$) and NSS rises sevenfold ($0.26 \!\to\! 1.92$). All three move together: AMR confirms more mass lands in the mask, AP confirms in-mask pixels are genuinely ranked higher rather than the map being uniformly inflated, and NSS puts the contrast at nearly two standard deviations above the image mean: exactly the gains the objective targets, achieved in a short fine-tune without disturbing the model's other behavior. \Cref{sec:results-bench} asks whether they also help downstream.
+\Cref{tab:align} reports the three localization metrics on held-out images, and the effect is large. The base model already places above-chance mass inside annotated regions, confirming that grounding-relevant attention exists, but the alignment loss transforms it: training the language model multiplies mean AMR several-fold---and lifts the outlier-robust median by a similar factor---while AP more than doubles and NSS climbs even more steeply. All three move together: AMR confirms more mass lands in the mask, AP confirms in-mask pixels are genuinely ranked higher rather than the map being uniformly inflated, and NSS confirms the saliency at annotated pixels sits well above the image-wide mean---exactly the gains the objective targets, achieved in a short fine-tune without disturbing the model's other behavior. \Cref{sec:results-bench} asks whether they also help downstream.
 
-The ablation is unambiguous about \emph{where} this happens. Plain caption fine-tuning without the loss (Caption SFT) barely moves the metrics ($\mathrm{AMR}\,1.46$), and aligning the projector alone is little better ($1.51$): the projector simply cannot reshape token-conditioned localization much. Aligning the language model is what matters, and adding the projector on top of the LM is essentially a no-op (LM $5.76$ vs.\ LM+proj.\ $5.90$, within their large spread). The two LM-trainable variants are statistically indistinguishable here, a behavioral equivalence we trace to the optimization geometry in \Cref{sec:analysis-where}. The high AMR variance ($\mathrm{std}\approx 4.6$) reflects the metric's sensitivity to small masks, which is why we report the median alongside; the median tells the same story.
+The ablation is unambiguous about \emph{where} this happens. Plain caption fine-tuning without the loss (Caption SFT) barely moves the metrics, and aligning the projector alone is little better: the projector simply cannot reshape token-conditioned localization much. Aligning the language model is what matters, and adding the projector on top of the LM is essentially a no-op, the two LM-trainable variants falling within each other's large spread. This behavioral equivalence we trace to the optimization geometry in \Cref{sec:analysis-where}. The high AMR variance reflects the metric's sensitivity to small masks, which is why we report the median alongside; the median tells the same story.
+
+\subsection{Qualitative effect on saliency}
+\label{sec:results-qual}
+
+\begin{figure*}[t]
+\centering
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}cc@{}}
+\includegraphics[width=0.45\linewidth]{figures/crows_base.png} &
+\includegraphics[width=0.45\linewidth]{figures/crows_finetuned.png} \\
+\end{tabular}
+\caption{Saliency for an object token before (left) and after (right) alignment; brighter is more attention (\Cref{sec:results-qual}). Alignment cleans up the map: attention the base model scattered onto background and image borders is pulled onto the birds, and the per-object mass is more evenly distributed. We visualize the token \texttt{rows} because LLaVA tokenizes ``crows'' as \texttt{\_c}+\texttt{rows}, so the grounded subword is \texttt{rows}.}
+\label{fig:qual}
+\end{figure*}
+
+\Cref{fig:qual} makes the metrics tangible through two representative cases; it is meant to illustrate the effect, not to quantify it (the systematic version is \Cref{tab:align}). First, alignment \emph{cleans up} the maps: the base model frequently deposits bright spots on non-informative regions (image edges and, characteristically, the bottom border) and distributes mass unevenly across the objects a token names, whereas after alignment these spurious peaks are suppressed and the mass redistributes onto the referent more uniformly (the flying birds), exactly the mass-covering behavior \Cref{eq:align} induces.
+
+Second, the same pressure that concentrates attention on discrete objects can \emph{over}-concentrate at the expense of broad backgrounds: for a token like \texttt{snow}, the aligned model withdraws the saliency the base model sensibly spread across the snowy ground, whereas background \emph{objects} with definite extent (plants, branches) stay well localized. We take up this asymmetry, and its root in the annotation distribution, in \Cref{sec:analysis-regions}.
 
 \subsection{The gains do not (yet) transfer downstream}
 \label{sec:results-bench}
@@ -47,27 +65,9 @@ KL align, LM + projector   & 39.5 & 57.6 & 53.4 & \textbf{35.3} & 57.7 & 44.2 & 
 \end{tabular}
 \end{table*}
 
-A method that reshapes attention this dramatically should, one hopes, help on tasks that need grounding. It does not, at least not yet. \Cref{tab:bench} shows the LM-aligned models tracking the base model across the suite: small gains on spatial reasoning (CV-Bench, MMStar) are offset by small drops elsewhere (counting, MMVP, POPE), and no variant is consistently ahead. The per-benchmark differences among base, caption SFT, and the LM-aligned models are at the $1$--$2$ point level, within run-to-run noise that we did not characterize with multiple seeds; we therefore read \Cref{tab:bench} for the \emph{absence} of a consistent gain rather than for any single number. General VQA and hallucination are likewise preserved by LM-alignment (GQA and POPE; \Cref{app:breakdown}). The projector-only model is the exception, and an instructive one: it is the only variant whose downstream profile changes sharply, lowering the bias rate ($41.7\!\to\!35.9$) but degrading hallucination (POPE $84.3\!\to\!73.2$) and counting, a capability-for-behavior trade we explain in \Cref{sec:analysis-pheno}.
+A method that reshapes attention this dramatically should, one hopes, help on tasks that need grounding. It does not, at least not yet. \Cref{tab:bench} shows the LM-aligned models tracking the base model across the suite: small gains on spatial reasoning (CV-Bench, MMStar) are offset by small drops elsewhere (counting, MMVP, POPE), and no variant is consistently ahead. The per-benchmark differences among base, caption SFT, and the LM-aligned models are at the $1$--$2$ point level, within run-to-run noise that we did not characterize with multiple seeds; we therefore read \Cref{tab:bench} for the \emph{absence} of a consistent gain rather than for any single number. General VQA and hallucination are likewise preserved by LM-alignment (GQA and POPE; \Cref{app:breakdown}). The projector-only model is the exception, and an instructive one: it is the only variant whose downstream profile changes sharply, lowering the bias rate but degrading hallucination (POPE) and counting, a capability-for-behavior trade we explain in \Cref{sec:analysis-pheno}.
 
 This gap between large intrinsic gains and flat downstream numbers is the central tension of the direct-fine-tuning regime, and it has two plausible causes: training on dense captions may push the model toward a captioning style that the benchmarks do not reward, and sharper attention may simply not be what bottlenecks these tasks for a 7B model. The instruction-tuning regime of \Cref{sec:regimes} targets the first cause directly; we return to it in \Cref{sec:results-it}.
-
-\subsection{Qualitative effect on saliency}
-\label{sec:results-qual}
-
-\begin{figure*}[t]
-\centering
-\setlength{\tabcolsep}{2pt}
-\begin{tabular}{@{}cc@{}}
-\includegraphics[width=0.45\linewidth]{figures/crows_base.png} &
-\includegraphics[width=0.45\linewidth]{figures/crows_finetuned.png} \\
-\end{tabular}
-\caption{Saliency for an object token before (left) and after (right) alignment; brighter is more attention (\Cref{sec:results-qual}). Alignment cleans up the map: attention the base model scattered onto background and image borders is pulled onto the birds, and the per-object mass is more evenly distributed. We visualize the token \texttt{rows} because LLaVA tokenizes ``crows'' as \texttt{\_c}+\texttt{rows}, so the grounded subword is \texttt{rows}.}
-\label{fig:qual}
-\end{figure*}
-
-\Cref{fig:qual} makes the metrics tangible through two representative cases; it is meant to illustrate the effect, not to quantify it (the systematic version is \Cref{tab:align}). First, alignment \emph{cleans up} the maps: the base model frequently deposits bright spots on non-informative regions (image edges and, characteristically, the bottom border) and distributes mass unevenly across the objects a token names, whereas after alignment these spurious peaks are suppressed and the mass redistributes onto the referent more uniformly (the flying birds), exactly the mass-covering behavior \Cref{eq:align} induces.
-
-Second, the same pressure that concentrates attention on discrete objects can \emph{over}-concentrate at the expense of broad backgrounds: for a token like \texttt{snow}, the aligned model withdraws the saliency the base model sensibly spread across the snowy ground, whereas background \emph{objects} with definite extent (plants, branches) stay well localized. We take up this asymmetry, and its root in the annotation distribution, in \Cref{sec:analysis-stuff}.
 
 \subsection{Toward downstream transfer: instruction tuning}
 \label{sec:results-it}
