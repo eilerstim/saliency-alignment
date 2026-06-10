@@ -1,28 +1,55 @@
 \subsection{Alignment sharpens attention localization}
 \label{sec:results-quant}
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
-\caption{Intrinsic attention-localization metrics on the held-out COCONut-PanCap split (\Cref{sec:metrics}). Higher is better for all three; $\mathrm{AMR}=1$ is the chance level. All aligned variants use the KL objective at $\lambda=0.5$, $200$ steps; rows differ only in the trainable component. Best per column in \textbf{bold}. (Final numbers pending.)}
+\caption{Intrinsic attention-localization on the held-out COCONut-PanCap split (\Cref{sec:metrics}); each cell is mean\,/\,median\,/\,std over images. Higher is better; $\mathrm{AMR}=1$ is chance. All aligned variants use the KL objective at $\lambda=0.5$ for $200$ steps and differ only in the trainable component; \emph{Caption SFT} is the no-alignment control ($\lambda=0$). Best mean per metric in \textbf{bold}.}
 \label{tab:align}
 \vskip 0.1in
 \small
 \begin{tabular}{lccc}
 \toprule
-Model & AMR $\uparrow$ & AP $\uparrow$ & NSS $\uparrow$ \\
+Variant & AMR (mean/med/std) & AP (mean/med/std) & NSS (mean/med/std) \\
 \midrule
-LLaVA-1.5-7B (base)        & \tbd & \tbd & \tbd \\
-\quad + align (projector)   & \tbd & \tbd & \tbd \\
-\quad + align (LM)          & \tbd & \tbd & \tbd \\
-\quad + align (LM + proj.)  & \tbd & \tbd & \tbd \\
+LLaVA-1.5-7B (base)              & 1.25 / 1.19 / 0.31 & 0.22 / 0.19 / 0.12 & 0.26 / 0.18 / 0.33 \\
+Caption SFT ($\lambda{=}0$, LM+proj.) & 1.46 / 1.36 / 0.43 & 0.24 / 0.21 / 0.13 & 0.42 / 0.34 / 0.39 \\
++ KL align, projector only       & 1.51 / 1.40 / 0.45 & 0.27 / 0.24 / 0.14 & 0.72 / 0.63 / 0.49 \\
++ KL align, LM only              & 5.76 / 4.70 / 4.60 & 0.55 / 0.54 / 0.18 & 1.92 / 1.81 / 0.84 \\
++ KL align, LM + projector       & \textbf{5.90} / 4.80 / 4.78 & \textbf{0.56} / 0.55 / 0.18 & \textbf{1.94} / 1.84 / 0.85 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
-\todo{Plug the measured AMR/AP/NSS into \Cref{tab:align} (replace every \texttt{??}) and bold the best per column; then tighten the numeric claims in this paragraph.}%
-\Cref{tab:align} reports the three localization metrics on held-out images. The metrics read together: AMR asks how much of the attention budget lands inside the annotated region, AP asks whether in-mask pixels are ranked above out-of-mask ones, and NSS asks how far above the image-wide mean the in-mask saliency sits. The base model already places above-chance mass inside annotated regions ($\mathrm{AMR}>1$), consistent with the existence of grounding-relevant attention, but leaves substantial room: a non-trivial share of its mass falls outside the referent.
+\Cref{tab:align} reports the three localization metrics on held-out images, and the effect is large. The base model already places above-chance mass inside annotated regions ($\mathrm{AMR}=1.25$), confirming that grounding-relevant attention exists, but the alignment loss transforms it: training the language model raises mean AMR to $5.8$---a $4.6{\times}$ increase, and still $4{\times}$ on the outlier-robust median ($1.19 \!\to\! 4.70$)---while AP more than doubles ($0.22 \!\to\! 0.55$) and NSS rises sevenfold ($0.26 \!\to\! 1.92$). All three move together: AMR confirms more mass lands in the mask, AP confirms in-mask pixels are genuinely ranked higher rather than the map being uniformly inflated, and NSS puts the contrast at nearly two standard deviations above the image mean.
 
-Adding the alignment loss improves all three metrics, and it does so without harming language modeling---validation cross-entropy and next-token accuracy are essentially unchanged.\todo{Confirm with base vs.\ aligned validation CE and next-token accuracy.} The gains are mutually reinforcing rather than redundant: AMR confirms more mass moves \emph{into} the mask, while the simultaneous AP rise shows the model is not simply inflating mass everywhere inside but is genuinely ranking in-mask pixels higher, and NSS quantifies the contrast in interpretable units. Among the adaptation sites, training the language model alone is sufficient to capture the gains (\Cref{sec:analysis}), so the improvement does not require touching the cross-modal projector.
+The ablation is unambiguous about \emph{where} this happens. Plain caption fine-tuning without the loss (Caption SFT) barely moves the metrics ($\mathrm{AMR}\,1.46$), and aligning the projector alone is little better ($1.51$): the projector simply cannot reshape token-conditioned localization much. Aligning the language model is what matters, and adding the projector on top of the LM is essentially a no-op (LM $5.76$ vs.\ LM+proj.\ $5.90$, within their large spread). The two LM-trainable variants are statistically indistinguishable here---a behavioral equivalence we trace to the optimization geometry in \Cref{sec:analysis-where}. The high AMR variance ($\mathrm{std}\approx 4.6$) reflects the metric's sensitivity to small masks, which is why we report the median alongside; the median tells the same story.
+
+\subsection{The gains do not (yet) transfer downstream}
+\label{sec:results-bench}
+
+\begin{table*}[t]
+\centering
+\caption{Downstream benchmarks (\%); higher is better except bias rate ($\downarrow$). Best per column in \textbf{bold}. Models as in \Cref{tab:align}. Despite the large intrinsic gains, the aligned models track the base model; projector-only trades grounding (POPE, MMVP) for a lower bias rate.}
+\label{tab:bench}
+\vskip 0.1in
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccccccc}
+\toprule
+Variant & Count & CV-2D & CV-3D & MMStar & MMVP & O3 & POPE & VLMsB & bias $\downarrow$ \\
+\midrule
+LLaVA-1.5-7B (base)        & \textbf{40.7} & 55.8 & 52.2 & 33.1 & \textbf{62.0} & \textbf{44.7} & \textbf{84.3} & 16.2 & 41.7 \\
+Caption SFT ($\lambda{=}0$) & 38.9 & 56.7 & 53.2 & 35.1 & 61.0 & 43.7 & 83.7 & 15.6 & 42.1 \\
+KL align, projector only   & 33.0 & 49.9 & \textbf{53.8} & 32.1 & 50.7 & 40.3 & 73.2 & \textbf{16.5} & \textbf{35.9} \\
+KL align, LM only          & 39.9 & \textbf{57.9} & \textbf{53.8} & 35.2 & 59.7 & 43.9 & 83.5 & 15.8 & 38.9 \\
+KL align, LM + projector   & 39.5 & 57.6 & 53.4 & \textbf{35.3} & 57.7 & 44.2 & 83.6 & 15.4 & 40.3 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+A method that reshapes attention this dramatically should, one hopes, help on tasks that need grounding. It does not---at least not yet. \Cref{tab:bench} shows the LM-aligned models tracking the base model across the suite: small gains on spatial reasoning (CV-Bench, MMStar) are offset by small drops elsewhere (counting, MMVP, POPE), and no variant is consistently ahead. The projector-only model is the exception, and an instructive one: it is the only variant whose downstream profile changes sharply, lowering the bias rate ($41.7\!\to\!35.9$) but degrading hallucination (POPE $84.3\!\to\!73.2$) and counting---a capability-for-behavior trade we explain in \Cref{sec:analysis-pheno}.
+
+This gap between large intrinsic gains and flat downstream numbers is the central tension of the direct-fine-tuning regime, and it has two plausible causes: training on dense captions may push the model toward a captioning style that the benchmarks do not reward, and sharper attention may simply not be what bottlenecks these tasks for a 7B model. The instruction-tuning regime of \Cref{sec:regimes} targets the first cause directly; we return to it in \Cref{sec:results-it}.
 
 \subsection{Qualitative effect on saliency}
 \label{sec:results-qual}
@@ -48,6 +75,10 @@ Adding the alignment loss improves all three metrics, and it does so without har
 \label{fig:qual}
 \end{figure*}
 
-\Cref{fig:qual} contrasts saliency maps before and after alignment and makes the quantitative trend tangible. Two effects stand out. First, alignment \emph{cleans up} the maps. The base model frequently deposits bright spots on non-informative regions---image edges and, characteristically, the bottom border---and distributes mass unevenly across the objects a token names. After alignment these spurious peaks are suppressed and the mass redistributes onto the referent more uniformly (the flying birds, top row), exactly the mass-covering behavior \Cref{eq:align} is designed to induce.
+\Cref{fig:qual} makes the metrics tangible. First, alignment \emph{cleans up} the maps: the base model frequently deposits bright spots on non-informative regions---image edges and, characteristically, the bottom border---and distributes mass unevenly across the objects a token names, whereas after alignment these spurious peaks are suppressed and the mass redistributes onto the referent more uniformly (the flying birds, top row), exactly the mass-covering behavior \Cref{eq:align} induces.
 
 Second, the same pressure that concentrates attention on discrete objects can \emph{over}-concentrate at the expense of broad backgrounds. For the token \texttt{snow} (bottom row), the base model sensibly spreads saliency across the snowy ground, while the aligned model pulls mass off it and onto foreground structure. Background \emph{objects} with definite extent---plants, branches---remain well localized; it is amorphous ``stuff'' that suffers. We take up this asymmetry, and its root in the annotation distribution, in \Cref{sec:analysis-stuff}.
+
+\subsection{Toward downstream transfer: instruction tuning}
+\label{sec:results-it}
+The instruction-tuned regime (\Cref{sec:regimes})---LoRA on the LLaVA-1.5 665K instruction mixture whose detailed-description answers carry our grounded captions---is designed to retain the intrinsic gains of \Cref{tab:align} while preserving the general capabilities that direct fine-tuning leaves on the table, and to test whether decoupling the alignment signal from a caption-only diet closes the transfer gap of \Cref{tab:bench}. \emph{These experiments are ongoing; results will be reported here.}\todo{Add instruction-tuned intrinsic (\Cref{tab:align}) and downstream (\Cref{tab:bench}) numbers once runs complete.}
