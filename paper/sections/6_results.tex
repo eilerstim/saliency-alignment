@@ -20,7 +20,7 @@ Caption SFT ($\lambda{=}0$, LM+proj.) & 1.46 / 1.36 / 0.43 & 0.24 / 0.21 / 0.13 
 \end{tabular}
 \end{table*}
 
-\Cref{tab:align} reports the three localization metrics on held-out images, and the effect is large. The base model already places above-chance mass inside annotated regions ($\mathrm{AMR}=1.25$), confirming that grounding-relevant attention exists, but the alignment loss transforms it: training the language model raises mean AMR to $5.8$, a $4.6{\times}$ increase and still $4{\times}$ on the outlier-robust median ($1.19 \!\to\! 4.70$), while AP more than doubles ($0.22 \!\to\! 0.55$) and NSS rises sevenfold ($0.26 \!\to\! 1.92$). All three move together: AMR confirms more mass lands in the mask, AP confirms in-mask pixels are genuinely ranked higher rather than the map being uniformly inflated, and NSS puts the contrast at nearly two standard deviations above the image mean. We read these numbers cautiously: all three reward in-mask concentration and AMR is the test-time analog of the training target, so they certify that the optimization \emph{succeeds at reshaping attention}, not that the reshaping is useful downstream, which is the question \Cref{sec:results-bench} turns to next.
+\Cref{tab:align} reports the three localization metrics on held-out images, and the effect is large. The base model already places above-chance mass inside annotated regions ($\mathrm{AMR}=1.25$), confirming that grounding-relevant attention exists, but the alignment loss transforms it: training the language model raises mean AMR to $5.8$, a $4.6{\times}$ increase and still $4{\times}$ on the outlier-robust median ($1.19 \!\to\! 4.70$), while AP more than doubles ($0.22 \!\to\! 0.55$) and NSS rises sevenfold ($0.26 \!\to\! 1.92$). All three move together: AMR confirms more mass lands in the mask, AP confirms in-mask pixels are genuinely ranked higher rather than the map being uniformly inflated, and NSS puts the contrast at nearly two standard deviations above the image mean: exactly the gains the objective targets, achieved in a short fine-tune without disturbing the model's other behavior. \Cref{sec:results-bench} asks whether they also help downstream.
 
 The ablation is unambiguous about \emph{where} this happens. Plain caption fine-tuning without the loss (Caption SFT) barely moves the metrics ($\mathrm{AMR}\,1.46$), and aligning the projector alone is little better ($1.51$): the projector simply cannot reshape token-conditioned localization much. Aligning the language model is what matters, and adding the projector on top of the LM is essentially a no-op (LM $5.76$ vs.\ LM+proj.\ $5.90$, within their large spread). The two LM-trainable variants are statistically indistinguishable here, a behavioral equivalence we trace to the optimization geometry in \Cref{sec:analysis-where}. The high AMR variance ($\mathrm{std}\approx 4.6$) reflects the metric's sensitivity to small masks, which is why we report the median alongside; the median tells the same story.
 
@@ -29,14 +29,14 @@ The ablation is unambiguous about \emph{where} this happens. Plain caption fine-
 
 \begin{table*}[t]
 \centering
-\caption{Downstream benchmarks (\%); higher is better except bias rate ($\downarrow$). Best per column in \textbf{bold}. Models as in \Cref{tab:align}. Despite the large intrinsic gains, the aligned models track the base model; projector-only trades grounding (POPE, MMVP) for a lower bias rate.}
+\caption{Downstream benchmarks (\%); higher is better except bias rate ($\downarrow$). Best per column in \textbf{bold}. Models as in \Cref{tab:align}. Despite the large intrinsic gains, the aligned models track the base model; projector-only trades grounding (POPE, MMVP) for a lower bias rate. $^{\star}$\,contains COCO images~\citep{han2024coco}, which overlap our training data.}
 \label{tab:bench}
 \vskip 0.1in
 \small
 \setlength{\tabcolsep}{5pt}
 \begin{tabular}{lccccccccc}
 \toprule
-Variant & Count & CV-2D & CV-3D & MMStar & MMVP & O3 & POPE & VLMsB & bias $\downarrow$ \\
+Variant & Count & CV-2D$^{\star}$ & CV-3D & MMStar & MMVP & O3 & POPE$^{\star}$ & VLMsB & bias $\downarrow$ \\
 \midrule
 LLaVA-1.5-7B (base)        & \textbf{40.7} & 55.8 & 52.2 & 33.1 & \textbf{62.0} & \textbf{44.7} & \textbf{84.3} & 16.2 & 41.7 \\
 Caption SFT ($\lambda{=}0$) & 38.9 & 56.7 & 53.2 & 35.1 & 61.0 & 43.7 & 83.7 & 15.6 & 42.1 \\
@@ -61,7 +61,7 @@ This gap between large intrinsic gains and flat downstream numbers is the centra
 \includegraphics[width=0.45\linewidth]{figures/crows_base.png} &
 \includegraphics[width=0.45\linewidth]{figures/crows_finetuned.png} \\
 \end{tabular}
-\caption{Saliency before (left) and after (right) alignment for an object token (\Cref{sec:results-qual}). Alignment cleans up the map: attention the base model scattered onto background and image borders is pulled onto the birds, and the per-object mass is more evenly distributed. We visualize the token \texttt{rows} because LLaVA tokenizes ``crows'' as \texttt{\_c}+\texttt{rows}, so the grounded subword is \texttt{rows}.}
+\caption{Saliency for an object token before (left) and after (right) alignment; brighter is more attention (\Cref{sec:results-qual}). Alignment cleans up the map: attention the base model scattered onto background and image borders is pulled onto the birds, and the per-object mass is more evenly distributed. We visualize the token \texttt{rows} because LLaVA tokenizes ``crows'' as \texttt{\_c}+\texttt{rows}, so the grounded subword is \texttt{rows}.}
 \label{fig:qual}
 \end{figure*}
 
@@ -71,4 +71,4 @@ Second, the same pressure that concentrates attention on discrete objects can \e
 
 \subsection{Toward downstream transfer: instruction tuning}
 \label{sec:results-it}
-The transfer gap of \Cref{tab:bench} has two plausible causes (\Cref{sec:results-bench}); the instruction-tuned regime of \Cref{sec:regimes} is the experiment we designed to address the first. By porting the objective into the standard LLaVA-1.5 665K recipe via LoRA (so the grounded captions enter as one subset of a diverse instruction mixture rather than as the entire training signal), it aims to keep the intrinsic gains of \Cref{tab:align} without over-fitting to a captioning style, and to do so with minimal disturbance to base capabilities. We report this regime as ongoing work and present it here to make the design concrete; a full evaluation under the same intrinsic and downstream protocols is the immediate next step.
+The instruction-tuned regime of \Cref{sec:regimes} targets the first cause directly: porting the objective into the standard LLaVA-1.5 665K mixture via LoRA lets the grounded captions enter as one part of a diverse instruction diet rather than the entire training signal, aiming to retain the localization gains of \Cref{tab:align} without over-fitting to a captioning style. These experiments are ongoing.

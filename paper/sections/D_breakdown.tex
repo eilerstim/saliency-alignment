@@ -5,13 +5,13 @@ This appendix expands the consolidated downstream results (\Cref{tab:bench}) int
 
 \begin{table}[h]
 \centering
-\caption{General VQA and hallucination (zero-shot). Higher is better; best per column in \textbf{bold}. Aligning the language model preserves capability; aligning the projector alone degrades it.}
+\caption{General VQA and hallucination (zero-shot). Higher is better; best per column in \textbf{bold}. Aligning the language model preserves capability; aligning the projector alone degrades it. $^{\star}$\,GQA and POPE both draw on COCO images.}
 \label{tab:gqa_pope}
 \vskip 0.1in
 \small
 \begin{tabular}{lccc}
 \toprule
-Variant & GQA acc. & POPE acc. & POPE F1 \\
+Variant & GQA acc.$^{\star}$ & POPE acc.$^{\star}$ & POPE F1$^{\star}$ \\
 \midrule
 LLaVA-1.5-7B (base)        & \textbf{0.606} & 0.854 & 0.839 \\
 Caption SFT ($\lambda{=}0$) & 0.602 & 0.857 & 0.844 \\
@@ -29,7 +29,7 @@ Crucially, language-model alignment is exactly the configuration that produces t
 
 \begin{table}[h]
 \centering
-\caption{TallyQA counting accuracy (\%) by trained component and loss. Base (no fine-tuning) scores $40.96$. Training the projector helps counting; training the language model hurts it; the loss amplifies the component's direction.}
+\caption{TallyQA (which includes COCO images) counting accuracy (\%) by trained component and loss. Base (no fine-tuning) scores $40.96$. Training the projector helps counting; training the language model hurts it; the loss amplifies the component's direction.}
 \label{tab:counting}
 \vskip 0.1in
 \small
