@@ -1,0 +1,16 @@
+name: liuhaotian/llava-v1.5-mlp2x-336px-pretrain-vicuna-7b-v1.5
+instruction_tuned: false
+base_arch: llava-hf/llava-1.5-7b-hf
+base_lm: lmsys/vicuna-7b-v1.5
+base_clip: openai/clip-vit-large-patch14-336
+
+dtype: bfloat16
+
+gradient_checkpointing: true
+freeze:
+- vision_tower
+# - multi_modal_projector
+# - all 
+
+unfreeze: []
+# - multi_modal_projector

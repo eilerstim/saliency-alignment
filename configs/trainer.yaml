@@ -1,16 +1,16 @@
 # @package trainer
-max_epochs: 10
+max_epochs: 3  # Maybe shoud do 665k instead if they train for 3 epochs...
 deterministic: true
 accelerator: auto
 gradient_clip_val: null
 enable_model_summary: true
 
 enable_progress_bar: true
-log_every_n_steps: 10
+log_every_n_steps: 5
 precision: bf16-mixed
 
-accumulate_grad_batches: 4 
-max_steps: 200
+accumulate_grad_batches: 32  # FSDP w/ 4 GPUs, batch size 12: 12 * 4 * 3 = 144 effective batch size
+# max_steps: 1000 # 144 * 1000 = 144,000 samples, which is about 1 epoch for 150k samples
 
-val_check_interval: 100 # Validate every 100 training steps
+val_check_interval: 1000 # Validate every 100 training steps
 limit_val_batches: 0.1  # Use 10% of validation set

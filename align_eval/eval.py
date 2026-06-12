@@ -83,7 +83,8 @@ def evaluate(cfg: DictConfig) -> None:
     if fabric.global_rank == 0:
         logger.info(
             "Loading checkpoint: %s (world_size=%d)",
-            model_path, fabric.world_size,
+            model_path,
+            fabric.world_size,
         )
 
     # Eager attention is required for vl_saliency's hook-based extractor.
@@ -114,16 +115,22 @@ def evaluate(cfg: DictConfig) -> None:
         )
 
         local: list[torch.Tensor] = []
-        for i, batch in enumerate(dataloader):
+        for i, (batch, masks, segment_ids) in enumerate(dataloader):
             if batch is None:
                 local.append(nan_pad(bs))
                 continue
-            batch = {k: v.to(fabric.device) if isinstance(v, torch.Tensor) else v
-                     for k, v in batch.items()}
+            batch["masks"] = masks
+            batch["segment_ids"] = segment_ids
+            batch = {
+                k: v.to(fabric.device) if isinstance(v, torch.Tensor) else v
+                for k, v in batch.items()
+            }
             outputs = model(**batch, return_dict=True)
             scores = per_image_scores(
-                outputs.saliency, batch["masks"],
-                batch["segment_ids"], batch["labels"],
+                outputs.saliency,
+                batch["masks"],
+                batch["segment_ids"],
+                batch["labels"],
             )
             if scores.shape[0] < bs:
                 scores = torch.cat([scores, nan_pad(bs - scores.shape[0])], dim=0)
@@ -131,8 +138,10 @@ def evaluate(cfg: DictConfig) -> None:
             if fabric.global_rank == 0 and (i + 1) % 25 == 0:
                 logger.info("Evaluated %d batches", i + 1)
 
-    local_tensor = torch.cat(local, dim=0) if local else torch.empty(
-        (0, len(METRIC_NAMES)), device=fabric.device
+    local_tensor = (
+        torch.cat(local, dim=0)
+        if local
+        else torch.empty((0, len(METRIC_NAMES)), device=fabric.device)
     )
     gathered = fabric.all_gather(local_tensor)
     per_image = gathered.flatten(0, 1) if gathered.dim() == 3 else gathered
@@ -142,9 +151,9 @@ def evaluate(cfg: DictConfig) -> None:
         logger.info("\n=== Attention alignment metrics ===\n%s", format_table(summary))
 
         out_dir = Path(hydra_wd)
-        (out_dir / "alignment_summary.json").write_text(json.dumps(
-            {"checkpoint": model_path, "summary": summary}, indent=2
-        ))
+        (out_dir / "alignment_summary.json").write_text(
+            json.dumps({"checkpoint": model_path, "summary": summary}, indent=2)
+        )
         torch.save(per_image.cpu(), out_dir / "alignment_per_image.pt")
         logger.info("Wrote alignment metrics to %s", out_dir)
 

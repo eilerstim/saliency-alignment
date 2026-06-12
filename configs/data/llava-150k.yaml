@@ -1,0 +1,47 @@
+# COCONut dataset configuration
+# Extends base COCO config with COCONut-specific captions and masks
+#
+# Additional folder structure (extends coco.yaml):
+# data/coco/
+# ├── panoptic_train2017_masks/        # COCONut panoptic masks
+# │   ├── 000000000009.png
+# │   └── ...
+# ├── panoptic_train2017_captions/     # COCONut annotated captions
+# │   ├── 000000000009.txt
+# │   └── ...
+# └── coconut_pancap_50k.tar           # Downloaded archive
+
+defaults:
+  - coconut
+  - _self_
+
+llava_150k_dir: ${oc.env:PROJECT_DIR}/data/llava_coconut_pancap_150k
+
+# Dataset configuration
+dataset:
+  _target_: finetune.data.llava_150k.dataset.llava_150k_instruct_dataset
+
+# Collator configuration
+collator:
+  _target_: finetune.data.llava_150k.dataset.make_collate_fn
+  masks_dir: ${..coconut.masks_dir}
+  images_dir: ${..train.images_dir}
+  # processor will be passed at runtime via partial
+
+eval_collator:
+  _target_: finetune.data.llava_150k.dataset.make_collate_fn
+  masks_dir: ${..coconut.masks_dir}
+  images_dir: ${..validation.images_dir}
+  # processor will be passed at runtime via partial
+
+# Train/val splits — LLaVA-150k is sampled entirely from COCO train2017,
+# and the validation split is a random hold-out of those same rows.
+train:
+  split: train
+  name: train2017
+  images_dir: ${..images_dir}/${.name}
+
+validation:
+  split: validation
+  name: train2017
+  images_dir: ${..images_dir}/${.name}

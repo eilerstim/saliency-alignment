@@ -104,7 +104,7 @@ def per_image_scores(
         seg_ids = segment_ids[b][labels[b] != -100]
         if seg_ids.shape[0] == 0:
             continue
-        attn = attn[-seg_ids.shape[0]:]
+        attn = attn[-seg_ids.shape[0] :]
 
         has_segments = (seg_ids != -1).any(dim=1)
         if not has_segments.any():
@@ -132,8 +132,12 @@ def per_image_scores(
         ).any(dim=1)
 
         per_token = torch.stack(
-            [amr(attn, token_mask), average_precision(attn, token_mask),
-             nss(attn, token_mask)], dim=-1
+            [
+                amr(attn, token_mask),
+                average_precision(attn, token_mask),
+                nss(attn, token_mask),
+            ],
+            dim=-1,
         )
         scores[b] = torch.nanmean(per_token, dim=0)
 

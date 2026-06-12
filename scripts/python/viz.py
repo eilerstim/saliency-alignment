@@ -12,15 +12,26 @@ from vl_saliency import Saliency
 from vl_saliency.select import regex
 
 parser = argparse.ArgumentParser()
-parser.add_argument("csv_file", help="CSV file with columns: word, prompt, response, image_url")
+parser.add_argument(
+    "csv_file", help="CSV file with columns: word, prompt, response, image_url"
+)
 parser.add_argument("--output_dir", default="figs", help="Directory to save figures")
 args = parser.parse_args()
 
 models_to_run = [
     ("base", "llava-hf/llava-1.5-7b-hf"),
-    ("lm_only", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_only"),
-    ("proj_only", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_proj_only"),
-    ("lm_proj", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_proj")
+    (
+        "lm_only",
+        "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_only",
+    ),
+    (
+        "proj_only",
+        "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_proj_only",
+    ),
+    (
+        "lm_proj",
+        "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_proj",
+    ),
 ]
 
 transformers.utils.logging.set_verbosity_error()
@@ -78,13 +89,20 @@ for model_type, model_path in models_to_run:
         )
 
         try:
-            fig = sal.plot(regex(word), alpha=0.8, cmap="inferno", title=f"Saliency Map for `{word}` ({model_type})")
+            fig = sal.plot(
+                regex(word),
+                alpha=0.8,
+                cmap="inferno",
+                title=f"Saliency Map for `{word}` ({model_type})",
+            )
             url_slug = re.sub(r"^https?://(www\.)?", "", image_url)[:10]
             url_slug = re.sub(r"[^a-zA-Z0-9]", "_", url_slug)
             fig.savefig(f"{args.output_dir}/map_{model_type}_{word}_{url_slug}.png")
             print(f"  Saved saliency map for '{word}' ({model_type})")
         except Exception as e:
-            print(f"  Skipping word '{word}' ({model_type}) — could not find it in the tokens.")
+            print(
+                f"  Skipping word '{word}' ({model_type}) — could not find it in the tokens."
+            )
             print(f"  Available tokens: {sal.decoded_gen_tokens}")
             print(f"  Error: {e}")
 

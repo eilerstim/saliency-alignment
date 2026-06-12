@@ -196,7 +196,7 @@ def map_annotations_to_segments(
     Returns:
         List of category ID lists corresponding to each token's annotations.
     """
-    segment_to_category = {seg_id: cat_id for seg_id, cat_id in segments_info}
+    segment_to_category = dict(segments_info)
 
     return [
         [segment_to_category[aid] for aid in ann_ids if aid in segment_to_category]

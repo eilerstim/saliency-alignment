@@ -17,14 +17,14 @@ export EVAL_ONLY=${EVAL_ONLY:-false}
 # If USE_LORA is set to true, train with PEFT/LoRA instead of full fine-tuning.
 export USE_LORA=${USE_LORA:-false}
 
-MODEL_SIZE=7b
-BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
-
+MODEL=llava-pretrain-vicuna-7b
 CRITERION="kl"
-LAMBDA=0.5
-RUN_ID_SUFFIX="lm_only"
+LAMBDA=0.1
+RUN_ID_SUFFIX="instruction-tune"
 
-RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}${RUN_ID_SUFFIX:+_${RUN_ID_SUFFIX}}"
+RUN_ID="${MODEL}_${CRITERION}_w${LAMBDA}${RUN_ID_SUFFIX:+_${RUN_ID_SUFFIX}}"
+
+RUN_ID="llava-pretrain-vicuna-7b_kl_w0.5_instruction-tune-from-lightning-ckpt-merged"
 
 EXTRA_OVERRIDES=""
 if [ "${USE_LORA}" = "true" ]; then
@@ -45,7 +45,7 @@ fi
 # ---- Submit training job ----
 TRAIN_JOBID=$(sbatch --parsable \
     scripts/cscs/arr_train.sh \
-    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE" "$EXTRA_OVERRIDES")
+    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL" "$EXTRA_OVERRIDES")
 
 # ---- Submit evaluation jobs dependent on training ----
 sbatch --dependency=afterok:${TRAIN_JOBID} \

@@ -233,7 +233,9 @@ def extract_attention_weights(
     if missing:
         logger.warning(
             "Could not extract %d/%d attention weight tensors: %s",
-            len(missing), len(wanted), sorted(missing)[:5],
+            len(missing),
+            len(wanted),
+            sorted(missing)[:5],
         )
     return out
 
@@ -304,10 +306,7 @@ def extract_attention_proj_drifts(
         for proj in proj_names:
             # Match both self_attn.<proj>.weight and mlp.<proj>.weight so
             # the per-layer table can include MLP controls alongside Q/V.
-            if (
-                f"self_attn.{proj}.weight" in pname
-                or f"mlp.{proj}.weight" in pname
-            ):
+            if f"self_attn.{proj}.weight" in pname or f"mlp.{proj}.weight" in pname:
                 out[proj][layer_idx] = stats["relative_update"]
                 break
     return out
@@ -348,9 +347,7 @@ def print_per_layer_analysis(
     # Extract drift vectors once per run
     drift_by_run: dict[str, dict[str, dict[int, float]]] = {}
     for label in labels:
-        drift_by_run[label] = extract_attention_proj_drifts(
-            reports[label], proj_names
-        )
+        drift_by_run[label] = extract_attention_proj_drifts(reports[label], proj_names)
 
     # ---- Summary table: concentration per (run, projection) ----
     print("\n=== Per-layer LM attention-projection drift: concentration ===")
@@ -436,15 +433,9 @@ def print_per_layer_analysis(
             print(f"\n{proj} — pairwise top-{top_k} Jaccard overlap:")
             for i, (la, sa) in enumerate(run_items):
                 for lb, sb in run_items[i + 1 :]:
-                    if sa or sb:
-                        jaccard = len(sa & sb) / len(sa | sb)
-                    else:
-                        jaccard = 0.0
+                    jaccard = len(sa & sb) / len(sa | sb) if sa or sb else 0.0
                     shared = sorted(sa & sb)
-                    print(
-                        f"  {la:<40s} vs {lb:<40s} "
-                        f"J={jaccard:.2f}  shared={shared}"
-                    )
+                    print(f"  {la:<40s} vs {lb:<40s} J={jaccard:.2f}  shared={shared}")
 
 
 def print_per_head_analysis(
@@ -554,10 +545,7 @@ def print_per_head_analysis(
                 for lb, sb in items[i + 1 :]:
                     jaccard = len(sa & sb) / len(sa | sb) if (sa or sb) else 0.0
                     shared = sorted(sa & sb)
-                    print(
-                        f"  {la:<40s} vs {lb:<40s} "
-                        f"J={jaccard:.2f}  shared={shared}"
-                    )
+                    print(f"  {la:<40s} vs {lb:<40s} J={jaccard:.2f}  shared={shared}")
 
 
 def main() -> int:
@@ -669,7 +657,8 @@ def main() -> int:
         # (gate_proj/up_proj/down_proj) pass through --per-layer-projs but
         # don't have a meaningful per-head structure, so we exclude them here.
         attn_projs_for_head = [
-            p for p in args.per_layer_projs
+            p
+            for p in args.per_layer_projs
             if p in {"q_proj", "k_proj", "v_proj", "o_proj"}
         ]
         if not attn_projs_for_head:
@@ -835,7 +824,8 @@ def main() -> int:
         # projections appear in args.per_layer_projs for per-layer / Gini
         # analysis but don't have a meaningful per-head structure.
         attn_projs_for_head = [
-            p for p in args.per_layer_projs
+            p
+            for p in args.per_layer_projs
             if p in {"q_proj", "k_proj", "v_proj", "o_proj"}
         ]
 
@@ -855,7 +845,9 @@ def main() -> int:
                 target_layers_by_proj[proj] = sorted(layer for layer, _ in top)
                 logger.info(
                     "per-head: selected layers for %s from run '%s': %s",
-                    proj, label, target_layers_by_proj[proj],
+                    proj,
+                    label,
+                    target_layers_by_proj[proj],
                 )
                 break
             else:

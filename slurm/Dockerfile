@@ -7,6 +7,9 @@ ENV PROJECT_DIR="${PROJECT_DIR}"
 # Set working directory
 WORKDIR ${PROJECT_DIR}
 
+# Download just
+COPY --from=ghcr.io/casey/just:latest /just /usr/local/bin/
+
 # Caches inside mounted directory
 ENV HF_HOME="${PROJECT_DIR}/.hf"
 
