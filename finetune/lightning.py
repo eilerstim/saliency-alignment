@@ -101,15 +101,22 @@ class FineTuner(L.LightningModule):
             batch_size=batch["input_ids"].size(0),
         )
 
-    def configure_optimizers(self) -> tuple:
+    def configure_optimizers(self):
         params = [p for p in self.model.parameters() if p.requires_grad]
         optimizer = instantiate(self.cfg.optim, params=params)
 
-        if "scheduler" not in self.cfg:
+        scheduler_cfg = self.cfg.get("scheduler")
+        if scheduler_cfg is None:
             return optimizer
 
-        scheduler = instantiate(self.cfg.scheduler, optimizer=optimizer)
-        return [optimizer], [scheduler]
+        # Step the LR schedule per optimizer step, not per epoch: training is
+        # bounded by max_steps (< 1 epoch), so an epoch-interval scheduler would
+        # never advance.
+        scheduler = instantiate(scheduler_cfg, optimizer=optimizer)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {"scheduler": scheduler, "interval": "step", "frequency": 1},
+        }
 
     def train_dataloader(self) -> DataLoader:
         # Instantiate dataset with split="train"

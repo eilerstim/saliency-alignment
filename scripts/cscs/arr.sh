@@ -19,6 +19,9 @@ mkdir -p logs
 # If EVAL_ONLY is set to true, only run evaluation on trained models
 export EVAL_ONLY=${EVAL_ONLY:-false}
 
+# Seed for this sweep replica; re-run with SEED=43,44,... for error bars.
+SEED=${SEED:-42}
+
 MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 
@@ -40,7 +43,7 @@ BASELINE_ID=$((NUM_KL_TASKS + NUM_FREEZES))
 # ---- BASELINE: eval only ----
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "${BASELINE_ID}" ]; then
     sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}" "true"
-    sbatch scripts/cscs/count/eval.sh "${BASE_MODEL}" "true"
+    sbatch scripts/cscs/arr_align_eval.sh "${BASE_MODEL}" "true"
     echo "Submitted EVAL only for baseline model ${BASE_MODEL} at $(date)"
     exit 0
 fi
@@ -59,14 +62,14 @@ fi
 FREEZE_NAME=${FREEZE_NAMES[$FREEZE_IDX]}
 FREEZE_OVERRIDE=${FREEZE_OVERRIDES[$FREEZE_IDX]}
 
-RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}_${FREEZE_NAME}"
+RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}_${FREEZE_NAME}_seed${SEED}"
 
 echo "Submitting jobs for ${RUN_ID} at $(date)"
 
 # ---- Check if only evaluation is requested ----
 if [ "${EVAL_ONLY}" = "true" ]; then
     sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
-    sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
+    sbatch scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
     echo "Submitted EVAL only for ${RUN_ID}"
     exit 0
 fi
@@ -74,13 +77,13 @@ fi
 # ---- Submit training job ----
 TRAIN_JOBID=$(sbatch --parsable \
     scripts/cscs/arr_train.sh \
-    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE" "$FREEZE_OVERRIDE")
+    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE" "$FREEZE_OVERRIDE seed=${SEED}")
 
-# ---- Submit evaluation job dependent on training ----
+# ---- Submit evaluation jobs dependent on training ----
 sbatch --dependency=afterok:${TRAIN_JOBID} \
     scripts/cscs/arr_eval.sh "$RUN_ID"
 
 sbatch --dependency=afterok:${TRAIN_JOBID} \
-    scripts/cscs/count/eval.sh "$RUN_ID" "false"
+    scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
 
 echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"
