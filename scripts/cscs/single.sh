@@ -36,8 +36,6 @@ echo "Submitting jobs for ${RUN_ID} at $(date)"
 # ---- Check if only evaluation is requested ----
 if [ "${EVAL_ONLY}" = "true" ]; then
     sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
-    # Counting is covered by countbench in arr_eval.sh (lmms-eval); standalone
-    # count-eval kept but disabled.
     # sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
     sbatch scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
     echo "Submitted EVAL only for ${RUN_ID}"
@@ -53,8 +51,6 @@ TRAIN_JOBID=$(sbatch --parsable \
 sbatch --dependency=afterok:${TRAIN_JOBID} \
     scripts/cscs/arr_eval.sh "$RUN_ID"
 
-# Counting is covered by countbench in arr_eval.sh (lmms-eval); standalone
-# count-eval kept but disabled.
 # sbatch --dependency=afterok:${TRAIN_JOBID} \
 #     scripts/cscs/count/eval.sh "$RUN_ID" "false"
 
