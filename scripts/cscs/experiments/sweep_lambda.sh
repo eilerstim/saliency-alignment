@@ -7,9 +7,10 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-33
+#SBATCH --array=0-11
 # Experiment A: lambda dose-response (LM-only, canonical recipe).
-# 11 (criterion,lambda) combos x 3 seeds = tasks 0..32; task 33 = baseline eval.
+# 11 (criterion,lambda) combos x 1 seed = tasks 0..10; task 11 = baseline eval.
+# For error bars, add seeds to SEEDS below and bump --array to 0-(11*N_seeds-1)+1.
 set -euo pipefail
 mkdir -p logs
 
@@ -20,7 +21,7 @@ FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
 # degradation regime (neither cites a lambda ablation).
 CRITS=(default kl kl kl kl kl kl kl alignment alignment alignment)
 LAMS=(0 0.05 0.1 0.25 0.5 1 2 5 0.1 0.5 2)
-SEEDS=(42 43 44)
+SEEDS=(42)   # single seed; add 43 44 for error bars (and bump --array)
 N=$(( ${#CRITS[@]} * ${#SEEDS[@]} ))
 
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "$N" ]; then
