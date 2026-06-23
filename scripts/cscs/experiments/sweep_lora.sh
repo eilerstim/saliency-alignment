@@ -7,23 +7,25 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-19
+#SBATCH --array=0-22
 # Experiment C: LoRA vs full FT (+ rank sweep) at the knee lambda, LM-only, KL,
-# projector frozen in both arms. Layout (20 tasks):
+# projector frozen in both arms. LoRA LR defaults to 2e-4 and alpha = 2*rank
+# (constant alpha/r), matching the LLaVA-1.5 / VIRAL finetune_lora recipe
+# (lr 2e-4, r 128, alpha 256). Layout (23 tasks):
 #   0..2   = full-FT reference @ lr 2e-5 x {3 seeds}
-#   3..17  = LoRA rank {4,8,16,32,64} @ LORA_LR x {3 seeds}
-#   18..19 = LoRA-LR sub-sweep {5e-5,3e-4} @ rank 8, seed 42
+#   3..20  = LoRA rank {4,8,16,32,64,128} @ LORA_LR x {3 seeds}
+#   21..22 = LoRA-LR sub-sweep {1e-4,3e-4} @ rank 8, seed 42
 set -euo pipefail
 mkdir -p logs
 
 KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}   # set to Experiment A's knee
-LORA_LR=${LORA_LR:-1e-4}          # LR for the rank sweep (pick via sub-sweep)
+LORA_LR=${LORA_LR:-2e-4}          # LLaVA/VIRAL canonical; confirm via sub-sweep
 MODEL_SIZE=7b
 FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
 
 SEEDS=(42 43 44)
-RANKS=(4 8 16 32 64)
-SUB_LRS=(5e-5 3e-4)
+RANKS=(4 8 16 32 64 128)
+SUB_LRS=(1e-4 3e-4)
 
 NUM_SEEDS=${#SEEDS[@]}
 NUM_FULL=${NUM_SEEDS}
@@ -50,10 +52,10 @@ else
     SEED=42
 fi
 
-# ---- Build run_id and overrides ----
+# ---- Build run_id and overrides (alpha = 2*rank keeps alpha/r constant) ----
 if [ "${METHOD}" = "lora" ]; then
     RUN_ID="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LR}_st200_seed${SEED}_lora_r${RANK}"
-    OVERRIDES="lora.enabled=true lora.r=${RANK} optim.lr=${LR} seed=${SEED}"
+    OVERRIDES="lora.enabled=true lora.r=${RANK} lora.lora_alpha=$(( 2 * RANK )) optim.lr=${LR} seed=${SEED}"
 else
     RUN_ID="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LR}_st200_seed${SEED}"
     OVERRIDES="$FREEZE optim.lr=${LR} seed=${SEED}"
