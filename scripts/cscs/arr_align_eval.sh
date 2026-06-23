@@ -9,22 +9,18 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=320G
-#SBATCH --environment=saliency
 #SBATCH -C thp_never&nvidia_vboost_enabled
 
 set -euo pipefail
 
 MODEL_NAME="$1"
 
-# if second arg is set to true, it's a hf model name
-# Otherwise, it's a run_id under models/
 if [ "${2:-false}" = "true" ]; then
     MODEL_PATH="${MODEL_NAME}"
 else
     MODEL_PATH="${PROJECT_DIR}/models/${MODEL_NAME}"
 fi
 
-# Prefer the merged sibling if arr_train.sh produced one (LoRA runs).
 [ -d "${MODEL_PATH}-merged" ] && MODEL_PATH="${MODEL_PATH}-merged"
 
 source ./scripts/cscs/env.sh
@@ -36,7 +32,9 @@ export NCCL_IB_DISABLE=1
 
 echo "Beginning alignment eval of ${MODEL_NAME} at $(date)"
 
-srun $PROJECT_DIR/.venv/bin/python -m align_eval.eval \
+srun \
+    --environment=saliency \
+    $PROJECT_DIR/.venv/bin/python -m align_eval.eval \
     run_id="${MODEL_NAME//\//__}" \
     +model_path="${MODEL_PATH}"
 

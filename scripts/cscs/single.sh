@@ -11,6 +11,8 @@
 set -euo pipefail
 mkdir -p logs
 
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
 # If EVAL_ONLY is set to true, only run evaluation on trained models
 export EVAL_ONLY=${EVAL_ONLY:-false}
 
@@ -36,7 +38,7 @@ echo "Submitting jobs for ${RUN_ID} at $(date)"
 # ---- Check if only evaluation is requested ----
 if [ "${EVAL_ONLY}" = "true" ]; then
     sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
-    sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
+    # sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
     sbatch scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
     echo "Submitted EVAL only for ${RUN_ID}"
     exit 0
@@ -51,8 +53,8 @@ TRAIN_JOBID=$(sbatch --parsable \
 sbatch --dependency=afterok:${TRAIN_JOBID} \
     scripts/cscs/arr_eval.sh "$RUN_ID"
 
-sbatch --dependency=afterok:${TRAIN_JOBID} \
-    scripts/cscs/count/eval.sh "$RUN_ID" "false"
+# sbatch --dependency=afterok:${TRAIN_JOBID} \
+#     scripts/cscs/count/eval.sh "$RUN_ID" "false"
 
 sbatch --dependency=afterok:${TRAIN_JOBID} \
     scripts/cscs/arr_align_eval.sh \

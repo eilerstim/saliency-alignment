@@ -18,6 +18,7 @@ wandb:
   project: saliency-alignment
   entity: teilers-eth-z-rich
   name: ${run_id}
+  job_type: finetune
 
 hydra:
   run:
