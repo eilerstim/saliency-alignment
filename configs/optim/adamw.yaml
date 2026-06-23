@@ -1,3 +1,5 @@
+# LLaVA-1.5 instruction-tuning recipe: AdamW, lr 2e-5, weight decay 0
+# (Liu et al. 2024, arXiv:2310.03744; haotian-liu/LLaVA scripts/v1_5/finetune.sh).
 _target_: torch.optim.AdamW
 lr: 2e-5
 betas:

@@ -11,7 +11,8 @@
 # Experiment C: LoRA vs full FT (+ rank sweep) at the knee lambda, LM-only, KL,
 # projector frozen in both arms. LoRA LR defaults to 2e-4 and alpha = 2*rank
 # (constant alpha/r), matching the LLaVA-1.5 / VIRAL finetune_lora recipe
-# (lr 2e-4, r 128, alpha 256). Layout (23 tasks):
+# (lr 2e-4, r 128, alpha 256; haotian-liu/LLaVA & cvlab-kaist/VIRAL
+# scripts/v1_5/finetune_lora.sh, arXiv:2310.03744 / 2509.07979). Layout (23 tasks):
 #   0..2   = full-FT reference @ lr 2e-5 x {3 seeds}
 #   3..20  = LoRA rank {4,8,16,32,64,128} @ LORA_LR x {3 seeds}
 #   21..22 = LoRA-LR sub-sweep {1e-4,3e-4} @ rank 8, seed 42

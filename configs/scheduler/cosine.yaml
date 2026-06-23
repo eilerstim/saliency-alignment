@@ -1,3 +1,4 @@
 # 3% warmup + cosine decay. Step counts are passed by configure_optimizers,
 # derived from trainer.max_steps so the schedule tracks the length sweep.
+# Matches the LLaVA-1.5 recipe (cosine, 3% warmup; Liu et al. 2024, arXiv:2310.03744).
 _target_: transformers.get_cosine_schedule_with_warmup

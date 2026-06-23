@@ -15,6 +15,9 @@ mkdir -p logs
 
 MODEL_SIZE=7b
 FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
+# Grid centered on 0.5, the default auxiliary-loss weight in VIRAL (Yoon et al.
+# 2025, arXiv:2509.07979) and REPA (Yu et al. 2025); extended to 5 to map the
+# degradation regime (neither cites a lambda ablation).
 CRITS=(default kl kl kl kl kl kl kl alignment alignment alignment)
 LAMS=(0 0.05 0.1 0.25 0.5 1 2 5 0.1 0.5 2)
 SEEDS=(42 43 44)
