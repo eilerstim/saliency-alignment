@@ -7,16 +7,16 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-15
+#SBATCH --array=0-12
 # Experiment B: LR & length at the knee lambda (LM-only, KL). Parallel LRS/STS.
 # Effective batch 128; ~98k images/epoch => 1 epoch ~= 766 steps. The paper's
 # canonical 200-step point is ~0.26 epoch; LLaVA-1.5/VIRAL train ~1 epoch. This
-# sweep spans ~0.07 (50) to ~4.2 (3200) epochs to probe data efficiency vs the
+# sweep spans ~0.07 (50) to ~2.1 (1600) epochs to probe data efficiency vs the
 # captioning-drift hypothesis, and tests lower LR at the longer lengths.
 # Base recipe lr 2e-5 follows LLaVA-1.5 (Liu et al. 2024, arXiv:2310.03744).
-#   0..6   length axis {50,100,200,400,800,1600,3200} @ lr 2e-5
-#   7..9   lr axis {5e-6,1e-5,5e-5} @ 200 steps  (2e-5@200 is task 2)
-#   10..15 low-LR-for-longer: {1e-5,5e-6} x {800,1600,3200} steps
+#   0..5  length axis {50,100,200,400,800,1600} @ lr 2e-5
+#   6..8  lr axis {5e-6,1e-5,5e-5} @ 200 steps  (2e-5@200 is task 2)
+#   9..12 low-LR-for-longer: {1e-5,5e-6} x {800,1600} steps
 set -euo pipefail
 mkdir -p logs
 
@@ -24,8 +24,8 @@ KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}   # set to Experiment A's knee
 SEED=${SEED:-42}
 MODEL_SIZE=7b
 FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
-LRS=(2e-5 2e-5 2e-5 2e-5 2e-5 2e-5 2e-5 5e-6 1e-5 5e-5 1e-5 1e-5 1e-5 5e-6 5e-6 5e-6)
-STS=(50   100  200  400  800  1600 3200 200  200  200  800  1600 3200 800  1600 3200)
+LRS=(2e-5 2e-5 2e-5 2e-5 2e-5 2e-5 5e-6 1e-5 5e-5 1e-5 1e-5 5e-6 5e-6)
+STS=(50   100  200  400  800  1600 200  200  200  800  1600 800  1600)
 
 LR=${LRS[$SLURM_ARRAY_TASK_ID]}
 ST=${STS[$SLURM_ARRAY_TASK_ID]}
