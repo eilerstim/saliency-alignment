@@ -7,20 +7,20 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-11
-# Experiment A: lambda dose-response (LM-only, canonical recipe).
-# 11 (criterion,lambda) combos x 1 seed = tasks 0..10; task 11 = baseline eval.
-# For error bars, add seeds to SEEDS below and bump --array to 0-(11*N_seeds-1)+1.
+#SBATCH --array=0-8
+# Experiment A: KL lambda dose-response (LM-only, canonical recipe), single seed.
+# 8 (criterion,lambda) combos = tasks 0..7; task 8 = baseline eval. The MSE
+# variant is run once at the knee lambda + best lr/length via run_mse.sh.
+# For error bars, add seeds to SEEDS and bump --array.
+# Grid centered on 0.5, the default aux-loss weight in VIRAL (arXiv:2509.07979)
+# and REPA (Yu et al. 2025); extended to 5 to map the degradation regime.
 set -euo pipefail
 mkdir -p logs
 
 MODEL_SIZE=7b
 FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
-# Grid centered on 0.5, the default auxiliary-loss weight in VIRAL (Yoon et al.
-# 2025, arXiv:2509.07979) and REPA (Yu et al. 2025); extended to 5 to map the
-# degradation regime (neither cites a lambda ablation).
-CRITS=(default kl kl kl kl kl kl kl alignment alignment alignment)
-LAMS=(0 0.05 0.1 0.25 0.5 1 2 5 0.1 0.5 2)
+CRITS=(default kl kl kl kl kl kl kl)
+LAMS=(0 0.05 0.1 0.25 0.5 1 2 5)
 SEEDS=(42)   # single seed; add 43 44 for error bars (and bump --array)
 N=$(( ${#CRITS[@]} * ${#SEEDS[@]} ))
 
