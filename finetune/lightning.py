@@ -109,9 +109,10 @@ class FineTuner(L.LightningModule):
         if scheduler_cfg is None:
             return optimizer
 
-        # 3% warmup + cosine decay, stepped per optimizer step: training is
-        # bounded by max_steps (< 1 epoch), so an epoch-interval scheduler
-        # would never advance.
+        # Warmup + cosine decay defined over num_training_steps and stepped per
+        # optimizer step. The run is step-bounded (trainer.max_steps), so an
+        # epoch-interval scheduler (Lightning's default) would step only a
+        # handful of times across the run instead of following the curve.
         total_steps = self.cfg.trainer.max_steps
         scheduler = instantiate(
             scheduler_cfg,
