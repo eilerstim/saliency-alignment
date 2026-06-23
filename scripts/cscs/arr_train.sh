@@ -9,7 +9,6 @@
 #SBATCH --gpus-per-node=4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=320G
-#SBATCH --environment=saliency
 #SBATCH -C thp_never&nvidia_vboost_enabled
 
 set -euo pipefail
@@ -24,7 +23,7 @@ export CRITERION LAMBDA MODEL_SIZE
 
 source ./scripts/cscs/env.sh
 
-export TOKENIZERS_PARALLELISM=false  # Disable tokenizer parallelism to avoid deadlocks
+export TOKENIZERS_PARALLELISM=false
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
@@ -32,19 +31,21 @@ export NCCL_IB_DISABLE=1
 echo "Beginning finetuning of ${RUN_ID} at $(date)"
 echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} EXTRA_OVERRIDES=${EXTRA_OVERRIDES}"
 
-# EXTRA_OVERRIDES is intentionally unquoted so multiple Hydra overrides split into separate args.
-srun $PROJECT_DIR/.venv/bin/python -m finetune \
+# EXTRA_OVERRIDES intentionally unquoted so multiple Hydra overrides split into args.
+srun \
+    --environment=saliency \
+    $PROJECT_DIR/.venv/bin/python -m finetune \
     run_id="${RUN_ID}" \
     loss="${CRITERION}" \
     loss.weight="${LAMBDA}" \
     model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf" \
     ${EXTRA_OVERRIDES}
 
-# If we trained with LoRA, materialize a merged HF checkpoint for downstream eval.
 MODEL_DIR="${PROJECT_DIR}/models/${RUN_ID}"
 if [ -f "${MODEL_DIR}/adapter_config.json" ]; then
     echo "Merging LoRA adapter for ${RUN_ID} at $(date)"
-    $PROJECT_DIR/.venv/bin/python -m finetune.merge \
+    srun --environment=saliency \
+        $PROJECT_DIR/.venv/bin/python -m finetune.merge \
         "${MODEL_DIR}" --output "${MODEL_DIR}-merged"
 fi
 

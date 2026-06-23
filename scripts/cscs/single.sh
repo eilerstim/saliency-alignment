@@ -11,6 +11,8 @@
 set -euo pipefail
 mkdir -p logs
 
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
 # If EVAL_ONLY is set to true, only run evaluation on trained models
 export EVAL_ONLY=${EVAL_ONLY:-false}
 
