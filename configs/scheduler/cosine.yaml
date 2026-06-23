@@ -1,6 +1,3 @@
-# Warmup + cosine-decay schedule. Warmup/decay lengths derive from
-# trainer.max_steps so the schedule stays correct across the length sweep.
-_target_: finetune.scheduler.cosine_with_warmup
-max_steps: ${trainer.max_steps}
-warmup_ratio: 0.03
-eta_min_ratio: 0.0
+# 3% warmup + cosine decay. Step counts are passed by configure_optimizers,
+# derived from trainer.max_steps so the schedule tracks the length sweep.
+_target_: transformers.get_cosine_schedule_with_warmup

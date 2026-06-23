@@ -109,13 +109,19 @@ class FineTuner(L.LightningModule):
         if scheduler_cfg is None:
             return optimizer
 
-        # Step the LR schedule per optimizer step, not per epoch: training is
-        # bounded by max_steps (< 1 epoch), so an epoch-interval scheduler would
-        # never advance.
-        scheduler = instantiate(scheduler_cfg, optimizer=optimizer)
+        # 3% warmup + cosine decay, stepped per optimizer step: training is
+        # bounded by max_steps (< 1 epoch), so an epoch-interval scheduler
+        # would never advance.
+        total_steps = self.cfg.trainer.max_steps
+        scheduler = instantiate(
+            scheduler_cfg,
+            optimizer=optimizer,
+            num_warmup_steps=max(1, round(0.03 * total_steps)),
+            num_training_steps=total_steps,
+        )
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {"scheduler": scheduler, "interval": "step", "frequency": 1},
+            "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
         }
 
     def train_dataloader(self) -> DataLoader:
