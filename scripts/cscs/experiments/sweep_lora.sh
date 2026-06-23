@@ -1,63 +1,90 @@
 #!/bin/bash
-# Experiment C — LoRA vs full fine-tuning (+ rank sweep).  [run from repo root]
-#
-# At the knee lambda, LM-only, projector frozen in BOTH arms (full-FT lm_only
-# freezes the projector; PEFT freezes the whole base, so LoRA only adapts the
-# LM attention/MLP) — matched trainable surface. The rank sweep turns the
-# paper's asserted "low-rank, head-concentrated" adaptation (Appendix B) into a
-# measurement: the rank at which LoRA matches full FT ~ the intrinsic rank.
-#
-# LoRA needs its own (higher) LR; a small LoRA-LR sub-sweep picks it before the
-# rank sweep. After training, arr_train.sh merges the adapter so align-eval,
-# lmms-eval and compare_drift.py all see a full checkpoint.
-#
-#   KNEE_LAMBDA=0.5 LORA_LR=1e-4 bash scripts/cscs/experiments/sweep_lora.sh
-#
-# Env overrides: KNEE_LAMBDA, SEEDS, BASE_SEED, RANKS, LORA_LR, LORA_LRS,
-#                FULL_LR, SUBSWEEP_RANK.
+#SBATCH --account=aa013
+#SBATCH --job-name=sweep_lora
+#SBATCH --output=logs/%x_%A_%a.out
+#SBATCH --error=logs/%x_%A_%a.err
+#SBATCH --time=00:05:00
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1G
+#SBATCH --array=0-19
+# Experiment C: LoRA vs full fine-tuning (+ rank sweep) at the knee lambda.
+# LM-only, KL, projector frozen in both arms (full-FT lm_only freezes the
+# projector; PEFT freezes the whole base, so LoRA only adapts the LM).
+# Layout (parallel arrays, built below): default grid = 20 tasks
+#   - full-FT reference (lr=2e-5)            x 3 seeds            = 3
+#   - LoRA rank sweep (lr=LORA_LR) r in {4,8,16,32,64} x 3 seeds = 15
+#   - LoRA-LR sub-sweep (rank 8, seed 42) lr in {5e-5,3e-4}      = 2
+# arr_train.sh merges the adapter after training so the evals see a full ckpt.
+# Submit:  KNEE_LAMBDA=0.5 LORA_LR=1e-4 sbatch scripts/cscs/experiments/sweep_lora.sh
 
-source "$(dirname "$0")/_lib.sh"
+set -euo pipefail
+mkdir -p logs
 
-KNEE_LAMBDA="${KNEE_LAMBDA:-0.5}"
-SEEDS=(${SEEDS:-42 43 44})
-BASE_SEED="${BASE_SEED:-42}"
-RANKS=(${RANKS:-4 8 16 32 64})
-LORA_LR="${LORA_LR:-1e-4}"          # LR for the rank sweep (pick via sub-sweep below)
-LORA_LRS=(${LORA_LRS:-5e-5 1e-4 3e-4})
-SUBSWEEP_RANK="${SUBSWEEP_RANK:-8}"
-FULL_LR="${FULL_LR:-2e-5}"          # full-FT reference LR (canonical)
+export EVAL_ONLY=${EVAL_ONLY:-false}
+KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}   # set to Experiment A's knee
+LORA_LR=${LORA_LR:-1e-4}          # LR for the rank sweep (pick via sub-sweep)
+FULL_LR=2e-5
 
-lora_overrides() { echo "lora.enabled=true lora.r=$1 optim.lr=$2 seed=$3"; }
+MODEL_SIZE=7b
+FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
 
-echo "== Experiment C: LoRA vs full FT (lambda=${KNEE_LAMBDA}) =="
+SEEDS=(42 43 44)
+RANKS=(4 8 16 32 64)
+SUB_LRS=(5e-5 3e-4)               # LoRA-LR sub-sweep (excludes LORA_LR)
 
-# --- Full fine-tuning reference (LM-only). Matches Experiment A's run_id when
-#     KNEE_LAMBDA/seed/LR coincide; harmless to re-submit, kept so C stands alone.
-echo "-- full-FT LM-only reference (lr=${FULL_LR}) --"
-for seed in "${SEEDS[@]}"; do
-    run_id="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${FULL_LR}_st200_seed${seed}"
-    submit_run "$run_id" kl "$KNEE_LAMBDA" "$FREEZE_LM_ONLY optim.lr=${FULL_LR} seed=${seed}" "true"
+# Build parallel arrays: METHOD / LR / RANK / SEED.
+M_METHOD=(); M_LR=(); M_RANK=(); M_SEED=()
+for s in "${SEEDS[@]}"; do
+    M_METHOD+=("full"); M_LR+=("$FULL_LR"); M_RANK+=("0"); M_SEED+=("$s")
 done
-
-# --- LoRA-LR sub-sweep at a fixed rank (base seed only) to choose LORA_LR.
-echo "-- LoRA-LR sub-sweep (r=${SUBSWEEP_RANK}, seed=${BASE_SEED}) --"
-for lr in "${LORA_LRS[@]}"; do
-    [ "$lr" = "$LORA_LR" ] && continue   # the chosen LR is covered by the rank sweep
-    run_id="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${lr}_st200_seed${BASE_SEED}_lora_r${SUBSWEEP_RANK}"
-    submit_run "$run_id" kl "$KNEE_LAMBDA" "$(lora_overrides "$SUBSWEEP_RANK" "$lr" "$BASE_SEED")" "true"
-done
-
-# --- Rank sweep at the chosen LoRA LR, across seeds.
-echo "-- LoRA rank sweep (lr=${LORA_LR}) --"
 for r in "${RANKS[@]}"; do
-    for seed in "${SEEDS[@]}"; do
-        run_id="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LORA_LR}_st200_seed${seed}_lora_r${r}"
-        submit_run "$run_id" kl "$KNEE_LAMBDA" "$(lora_overrides "$r" "$LORA_LR" "$seed")" "true"
+    for s in "${SEEDS[@]}"; do
+        M_METHOD+=("lora"); M_LR+=("$LORA_LR"); M_RANK+=("$r"); M_SEED+=("$s")
     done
 done
+for lr in "${SUB_LRS[@]}"; do
+    M_METHOD+=("lora"); M_LR+=("$lr"); M_RANK+=("8"); M_SEED+=("42")
+done
 
-echo "Done submitting Experiment C."
-echo "After runs finish, compare drift/heads, e.g.:"
-echo "  python scripts/python/compare_drift.py --per-head \\"
-echo "    models/llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${FULL_LR}_st200_seed${BASE_SEED} \\"
-echo "    models/llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LORA_LR}_st200_seed${BASE_SEED}_lora_r${SUBSWEEP_RANK}-merged"
+N_RUN=${#M_METHOD[@]}
+if [ "${SLURM_ARRAY_TASK_ID}" -ge "${N_RUN}" ]; then
+    echo "Task ${SLURM_ARRAY_TASK_ID} is out of range (N_RUN=${N_RUN}); nothing to do"
+    exit 0
+fi
+
+METHOD=${M_METHOD[$SLURM_ARRAY_TASK_ID]}
+LR=${M_LR[$SLURM_ARRAY_TASK_ID]}
+RANK=${M_RANK[$SLURM_ARRAY_TASK_ID]}
+SEED=${M_SEED[$SLURM_ARRAY_TASK_ID]}
+
+if [ "${METHOD}" = "lora" ]; then
+    RUN_ID="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LR}_st200_seed${SEED}_lora_r${RANK}"
+    OVERRIDES="lora.enabled=true lora.r=${RANK} optim.lr=${LR} seed=${SEED}"
+else
+    RUN_ID="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LR}_st200_seed${SEED}"
+    OVERRIDES="$FREEZE optim.lr=${LR} seed=${SEED}"
+fi
+echo "Submitting jobs for ${RUN_ID} at $(date)"
+
+# ---- Check if only evaluation is requested ----
+if [ "${EVAL_ONLY}" = "true" ]; then
+    sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
+    sbatch scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
+    echo "Submitted EVAL only for ${RUN_ID}"
+    exit 0
+fi
+
+# ---- Submit training job ----
+TRAIN_JOBID=$(sbatch --parsable \
+    scripts/cscs/arr_train.sh \
+    "$RUN_ID" "kl" "$KNEE_LAMBDA" "$MODEL_SIZE" "$OVERRIDES")
+
+# ---- Submit evaluation jobs dependent on training ----
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/arr_eval.sh "$RUN_ID"
+
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
+
+echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"

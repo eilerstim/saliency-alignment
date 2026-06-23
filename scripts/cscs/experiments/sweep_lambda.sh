@@ -1,60 +1,79 @@
 #!/bin/bash
-# Experiment A — loss-weight (lambda) sweep.  [run from repo root]
-#
-# Dose-response of the alignment loss's central knob on LLaVA-1.5-7B, LM-only,
-# under the canonical recipe (cosine schedule, 200 steps). Produces the
-# localization-vs-fluency curve and the localization-vs-downstream Pareto that
-# defend the paper's central claim (Section 6, λ-ablation).
-#
-# Eval tiering (cost control): every (lambda, seed) gets the cheap intrinsic
-# align-eval; the full downstream lmms-eval runs for the base seed at all
-# lambdas, plus all seeds at the decisive lambdas (knee + endpoints).
-#
-#   bash scripts/cscs/experiments/sweep_lambda.sh
-#
-# Env overrides: SEEDS, KL_LAMBDAS, MSE_LAMBDAS, DOWNSTREAM_LAMBDAS, BASE_SEED.
+#SBATCH --account=aa013
+#SBATCH --job-name=sweep_lambda
+#SBATCH --output=logs/%x_%A_%a.out
+#SBATCH --error=logs/%x_%A_%a.err
+#SBATCH --time=00:05:00
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1G
+#SBATCH --array=0-33
+# Experiment A: loss-weight (lambda) dose-response. LM-only, canonical recipe.
+# Layout (matches arr.sh style): 11 (criterion,lambda) combos x 3 seeds = 33
+# training tasks (0..32), plus baseline eval-only at task 33.
+#   combos: default@0 (ZeroCriterion control), kl@{0.05,0.1,0.25,0.5,1,2,5},
+#           alignment(MSE)@{0.1,0.5,2}
+# Submit:  sbatch scripts/cscs/experiments/sweep_lambda.sh
 
-source "$(dirname "$0")/_lib.sh"
+set -euo pipefail
+mkdir -p logs
 
-SEEDS=(${SEEDS:-42 43 44})
-BASE_SEED="${BASE_SEED:-42}"
+export EVAL_ONLY=${EVAL_ONLY:-false}
 
-# Primary (forward-KL) grid, plus a partial squared-error (MSE) grid so the
-# paper can report the variant instead of deferring it.
-KL_LAMBDAS=(${KL_LAMBDAS:-0 0.05 0.1 0.25 0.5 1 2 5})
-MSE_LAMBDAS=(${MSE_LAMBDAS:-0.1 0.5 2})
+MODEL_SIZE=7b
+BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
 
-# Lambdas that get the full downstream suite at *every* seed (others: base seed
-# only). Defaults to the endpoints + the provisional knee; update post-hoc.
-DOWNSTREAM_LAMBDAS=(${DOWNSTREAM_LAMBDAS:-0 0.5 5})
+COMBO_CRIT=(default kl kl kl kl kl kl kl alignment alignment alignment)
+COMBO_LAM=( 0       0.05 0.1 0.25 0.5 1 2 5 0.1       0.5       2)
+SEEDS=(42 43 44)
 
-in_list() { local x="$1"; shift; for e in "$@"; do [ "$e" = "$x" ] && return 0; done; return 1; }
+N_COMBO=${#COMBO_CRIT[@]}
+N_SEED=${#SEEDS[@]}
+N_RUN=$((N_COMBO * N_SEED))
+BASELINE_ID=${N_RUN}
 
-echo "== Experiment A: lambda sweep =="
-submit_baseline
+# ---- BASELINE: eval only ----
+if [ "${SLURM_ARRAY_TASK_ID}" -eq "${BASELINE_ID}" ]; then
+    sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}" "true"
+    sbatch scripts/cscs/arr_align_eval.sh "${BASE_MODEL}" "true"
+    echo "Submitted baseline eval for ${BASE_MODEL} at $(date)"
+    exit 0
+fi
 
-submit_grid() {
-    local crit_label="$1" crit="$2"; shift 2
-    local lambdas=("$@")
-    for lam in "${lambdas[@]}"; do
-        # lambda=0 is the no-alignment control: use the ZeroCriterion (loss=default)
-        # so the KL upsample/softmax never runs (cleaner and cheaper than weight=0).
-        local c="$crit"
-        [ "$lam" = "0" ] && c="default"
-        for seed in "${SEEDS[@]}"; do
-            local down="false"
-            if [ "$seed" = "$BASE_SEED" ] || in_list "$lam" "${DOWNSTREAM_LAMBDAS[@]}"; then
-                down="true"
-            fi
-            local run_id="llava-1.5-${MODEL_SIZE}_${c}_w${lam}_lm_only_lr2e-5_st200_seed${seed}"
-            submit_run "$run_id" "$c" "$lam" "$FREEZE_LM_ONLY seed=${seed}" "$down"
-        done
-    done
-}
+if [ "${SLURM_ARRAY_TASK_ID}" -ge "${N_RUN}" ]; then
+    echo "Task ${SLURM_ARRAY_TASK_ID} is out of range (N_RUN=${N_RUN}); nothing to do"
+    exit 0
+fi
 
-echo "-- KL grid --"
-submit_grid kl kl "${KL_LAMBDAS[@]}"
-echo "-- MSE grid (alignment) --"
-submit_grid mse alignment "${MSE_LAMBDAS[@]}"
+# ---- Resolve criterion / lambda / seed ----
+COMBO_IDX=$((SLURM_ARRAY_TASK_ID / N_SEED))
+SEED_IDX=$((SLURM_ARRAY_TASK_ID % N_SEED))
+CRITERION=${COMBO_CRIT[$COMBO_IDX]}
+LAMBDA=${COMBO_LAM[$COMBO_IDX]}
+SEED=${SEEDS[$SEED_IDX]}
 
-echo "Done submitting Experiment A."
+RUN_ID="llava-1.5-${MODEL_SIZE}_${CRITERION}_w${LAMBDA}_lm_only_lr2e-5_st200_seed${SEED}"
+echo "Submitting jobs for ${RUN_ID} at $(date)"
+
+# ---- Check if only evaluation is requested ----
+if [ "${EVAL_ONLY}" = "true" ]; then
+    sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
+    sbatch scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
+    echo "Submitted EVAL only for ${RUN_ID}"
+    exit 0
+fi
+
+# ---- Submit training job ----
+TRAIN_JOBID=$(sbatch --parsable \
+    scripts/cscs/arr_train.sh \
+    "$RUN_ID" "$CRITERION" "$LAMBDA" "$MODEL_SIZE" "$FREEZE seed=${SEED}")
+
+# ---- Submit evaluation jobs dependent on training ----
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/arr_eval.sh "$RUN_ID"
+
+sbatch --dependency=afterok:${TRAIN_JOBID} \
+    scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
+
+echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"
