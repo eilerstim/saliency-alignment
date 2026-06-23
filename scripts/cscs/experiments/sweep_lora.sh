@@ -7,14 +7,14 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-6
+#SBATCH --array=0-4
 # Experiment C: LoRA vs full FT (+ rank sweep) at the knee lambda, LM-only, KL,
 # projector frozen in both arms. LoRA LR 2e-4 and alpha = 2*rank (constant
 # alpha/r) match the LLaVA-1.5 / VIRAL finetune_lora recipe (lr 2e-4, r 128,
 # alpha 256; haotian-liu/LLaVA & cvlab-kaist/VIRAL, arXiv:2310.03744 / 2509.07979).
-# Layout (7 tasks):
+# Layout (5 tasks):
 #   0    = full-FT reference @ lr 2e-5
-#   1..6 = LoRA rank {4,8,16,32,64,128} @ LORA_LR
+#   1..4 = LoRA rank {4,16,64,128} @ LORA_LR
 # For error bars, add seeds to SEEDS and bump --array accordingly.
 set -euo pipefail
 mkdir -p logs
@@ -25,7 +25,7 @@ MODEL_SIZE=7b
 FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
 
 SEEDS=(42)   # single seed; add 43 44 for error bars (and bump --array)
-RANKS=(4 8 16 32 64 128)
+RANKS=(4 16 64 128)
 
 NUM_SEEDS=${#SEEDS[@]}
 NUM_FULL=${NUM_SEEDS}
