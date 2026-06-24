@@ -14,7 +14,7 @@
 # the LLaVA-1.5 / VIRAL finetune_lora recipe (lr 2e-4, r 128, alpha 256;
 # haotian-liu/LLaVA & cvlab-kaist/VIRAL, arXiv:2310.03744 / 2509.07979).
 # Layout (3 tasks):
-#   0..2 = LoRA rank {4,16,128} @ LORA_LR
+#   0..2 = LoRA rank {4,16,64} @ LORA_LR
 # For error bars, add seeds to SEEDS and bump --array accordingly.
 set -euo pipefail
 mkdir -p logs
@@ -24,7 +24,7 @@ LORA_LR=${LORA_LR:-2e-4}          # LLaVA/VIRAL canonical
 MODEL_SIZE=7b
 
 SEEDS=(42)   # single seed; add 43 44 for error bars (and bump --array)
-RANKS=(4 16 128)
+RANKS=(4 16 64)
 NUM_SEEDS=${#SEEDS[@]}
 
 RANK=${RANKS[$(( SLURM_ARRAY_TASK_ID / NUM_SEEDS ))]}
