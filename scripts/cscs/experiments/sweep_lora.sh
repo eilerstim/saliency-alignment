@@ -7,14 +7,14 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-3
+#SBATCH --array=0-2
 # Experiment C: LoRA rank sweep at the knee lambda (LM-only, KL), single seed.
 # The full-FT reference is Experiment A's knee run (kl@<knee>, lm_only, lr 2e-5,
 # st 200) -- reused, not retrained here. LoRA LR 2e-4 and alpha = 2*rank match
 # the LLaVA-1.5 / VIRAL finetune_lora recipe (lr 2e-4, r 128, alpha 256;
 # haotian-liu/LLaVA & cvlab-kaist/VIRAL, arXiv:2310.03744 / 2509.07979).
-# Layout (4 tasks):
-#   0..3 = LoRA rank {4,16,64,128} @ LORA_LR
+# Layout (3 tasks):
+#   0..2 = LoRA rank {4,16,128} @ LORA_LR
 # For error bars, add seeds to SEEDS and bump --array accordingly.
 set -euo pipefail
 mkdir -p logs
@@ -24,7 +24,7 @@ LORA_LR=${LORA_LR:-2e-4}          # LLaVA/VIRAL canonical
 MODEL_SIZE=7b
 
 SEEDS=(42)   # single seed; add 43 44 for error bars (and bump --array)
-RANKS=(4 16 64 128)
+RANKS=(4 16 128)
 NUM_SEEDS=${#SEEDS[@]}
 
 RANK=${RANKS[$(( SLURM_ARRAY_TASK_ID / NUM_SEEDS ))]}
