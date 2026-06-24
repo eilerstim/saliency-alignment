@@ -13,6 +13,8 @@
 
 set -euo pipefail
 
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
 MODEL_NAME="$1"
 
 if [ "${2:-false}" = "true" ]; then
