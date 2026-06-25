@@ -1,15 +1,16 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import hydra
 import lightning as L
 import torch
 from hydra.core.hydra_config import HydraConfig
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
+from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
-from pathlib import Path
 
 from vl_saliency import Saliency
 
@@ -53,6 +54,7 @@ def finetune(cfg: DictConfig):
     trainer = L.Trainer(
         default_root_dir=hydra_wd,
         logger=loggers,
+        callbacks=[LearningRateMonitor(logging_interval="step")],
         strategy=load_strategy(cfg.strategy),
         plugins=[SLURMEnvironment()],
         **cfg.trainer,
