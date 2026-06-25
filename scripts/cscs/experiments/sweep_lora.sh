@@ -19,6 +19,8 @@
 set -euo pipefail
 mkdir -p logs
 
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
 KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}   # set to Experiment A's knee
 LORA_LR=${LORA_LR:-2e-4}          # LLaVA/VIRAL canonical
 MODEL_SIZE=7b

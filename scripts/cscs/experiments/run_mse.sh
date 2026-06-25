@@ -14,6 +14,8 @@
 set -euo pipefail
 mkdir -p logs
 
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
 KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}
 MSE_LR=${MSE_LR:-2e-5}
 MSE_STEPS=${MSE_STEPS:-200}

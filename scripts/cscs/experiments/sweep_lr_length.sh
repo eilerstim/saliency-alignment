@@ -18,6 +18,8 @@
 set -euo pipefail
 mkdir -p logs
 
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
 KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}   # set to Experiment A's knee
 SEED=${SEED:-42}
 MODEL_SIZE=7b
