@@ -17,6 +17,8 @@
 set -euo pipefail
 mkdir -p logs
 
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
 MODEL_SIZE=7b
 FREEZE="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
 CRITS=(default kl kl kl kl kl kl)
