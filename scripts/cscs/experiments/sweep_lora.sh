@@ -9,9 +9,10 @@
 #SBATCH --mem=1G
 #SBATCH --array=0-2
 # Experiment C: LoRA rank sweep at the knee lambda (LM-only, KL), single seed.
-# The full-FT reference is Experiment A's knee run (kl@<knee>, lm_only, lr 2e-5,
-# st 200) -- reused, not retrained here. LoRA LR 2e-4 and alpha = 2*rank match
-# the LLaVA-1.5 / VIRAL finetune_lora recipe (lr 2e-4, r 128, alpha 256;
+# Run at the main operating point (STEPS, default 1600 = Experiment B's best
+# recipe). The full-FT reference is B's kl@<knee>, lm_only, lr 2e-5, st <STEPS>
+# run -- reused, not retrained here. LoRA LR 2e-4 and alpha = 2*rank match the
+# LLaVA-1.5 / VIRAL finetune_lora recipe (lr 2e-4, r 128, alpha 256;
 # haotian-liu/LLaVA & cvlab-kaist/VIRAL, arXiv:2310.03744 / 2509.07979).
 # Layout (3 tasks):
 #   0..2 = LoRA rank {4,16,128} @ LORA_LR
@@ -23,6 +24,7 @@ export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}   # set to Experiment A's knee
 LORA_LR=${LORA_LR:-2e-4}          # LLaVA/VIRAL canonical
+STEPS=${STEPS:-1600}              # main operating point (B's best recipe); 800 = cheaper
 MODEL_SIZE=7b
 
 SEEDS=(42)   # single seed; add 43 44 for error bars (and bump --array)
@@ -33,8 +35,8 @@ RANK=${RANKS[$(( SLURM_ARRAY_TASK_ID / NUM_SEEDS ))]}
 SEED=${SEEDS[$(( SLURM_ARRAY_TASK_ID % NUM_SEEDS ))]}
 
 # alpha = 2*rank keeps alpha/r constant across the sweep.
-RUN_ID="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LORA_LR}_st200_seed${SEED}_lora_r${RANK}"
-OVERRIDES="lora.enabled=true lora.r=${RANK} lora.lora_alpha=$(( 2 * RANK )) optim.lr=${LORA_LR} seed=${SEED}"
+RUN_ID="llava-1.5-${MODEL_SIZE}_kl_w${KNEE_LAMBDA}_lm_only_lr${LORA_LR}_st${STEPS}_seed${SEED}_lora_r${RANK}"
+OVERRIDES="lora.enabled=true lora.r=${RANK} lora.lora_alpha=$(( 2 * RANK )) optim.lr=${LORA_LR} trainer.max_steps=${STEPS} seed=${SEED}"
 
 # ---- Submit training job + dependent evals ----
 TRAIN_JOBID=$(sbatch --parsable \
