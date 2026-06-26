@@ -9,8 +9,9 @@
 #SBATCH --mem=1G
 #SBATCH --array=0-2
 # Experiment C: LoRA rank sweep at the knee lambda (LM-only, KL), single seed.
-# Run at the main operating point (STEPS, default 1600 = Experiment B's best
-# recipe). The full-FT reference is B's kl@<knee>, lm_only, lr 2e-5, st <STEPS>
+# Run at the main operating point (STEPS, default 800 -- ~90% of B's 1600-step
+# localization gain at 1/4 the compute). The full-FT reference is B's kl@<knee>,
+# lm_only, lr 2e-5, st <STEPS>
 # run -- reused, not retrained here. LoRA LR 2e-4 and alpha = 2*rank match the
 # LLaVA-1.5 / VIRAL finetune_lora recipe (lr 2e-4, r 128, alpha 256;
 # haotian-liu/LLaVA & cvlab-kaist/VIRAL, arXiv:2310.03744 / 2509.07979).
@@ -24,7 +25,7 @@ export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 KNEE_LAMBDA=${KNEE_LAMBDA:-0.5}   # set to Experiment A's knee
 LORA_LR=${LORA_LR:-2e-4}          # LLaVA/VIRAL canonical
-STEPS=${STEPS:-1600}              # main operating point (B's best recipe); 800 = cheaper
+STEPS=${STEPS:-800}               # main operating point (~90% of 1600's gain, 1/4 compute); 1600 = best
 MODEL_SIZE=7b
 
 SEEDS=(42)   # single seed; add 43 44 for error bars (and bump --array)
