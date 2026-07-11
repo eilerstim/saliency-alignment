@@ -14,14 +14,16 @@ from vl_saliency.select import regex
 parser = argparse.ArgumentParser()
 parser.add_argument("csv_file", help="CSV file with columns: word, prompt, response, image_url")
 parser.add_argument("--output_dir", default="figs", help="Directory to save figures")
+parser.add_argument(
+    "--models",
+    nargs="+",
+    default=["base=llava-hf/llava-1.5-7b-hf"],
+    metavar="NAME=PATH",
+    help="Models to visualize as NAME=PATH (repeatable). Default: base only.",
+)
 args = parser.parse_args()
 
-models_to_run = [
-    ("base", "llava-hf/llava-1.5-7b-hf"),
-    ("lm_only", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_only"),
-    ("proj_only", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_proj_only"),
-    ("lm_proj", "/users/teilers/scratch/saliency-alignment/models/llava-1.5-7b_kl_w0.5_lm_proj")
-]
+models_to_run = [tuple(spec.split("=", 1)) for spec in args.models]
 
 transformers.utils.logging.set_verbosity_error()
 
