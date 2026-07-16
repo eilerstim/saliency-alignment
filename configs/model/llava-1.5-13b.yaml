@@ -1,4 +1,4 @@
-name: llava-hf/llava-1.5-7b-hf
+name: llava-hf/llava-1.5-13b-hf
 
 dtype: bfloat16
 
@@ -6,10 +6,8 @@ gradient_checkpointing: true
 freeze:
 - vision_tower
 - multi_modal_projector
-# - all 
 
 unfreeze: []
-# - multi_modal_projector
 
 # Patched into the saved tokenizer_config.json for vLLM compatibility (LLaMA
 # tokenizer). Omitted for non-LLaMA models to avoid corrupting their tokenizer.

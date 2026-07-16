@@ -39,6 +39,14 @@ else
     echo "Beginning finetuning of ${RUN_ID} at $(date)"
     echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} EXTRA_OVERRIDES=${EXTRA_OVERRIDES}"
 
+    # Select the model: a named config group (MODEL_CFG) if set -- it carries the
+    # correct per-architecture freeze list -- otherwise the LLaVA-1.5 name by size.
+    if [ -n "${MODEL_CFG:-}" ]; then
+        MODEL_OVERRIDE="model=${MODEL_CFG}"
+    else
+        MODEL_OVERRIDE="model.name=llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+    fi
+
     # EXTRA_OVERRIDES intentionally unquoted so multiple Hydra overrides split into args.
     srun \
         --environment=saliency \
@@ -46,7 +54,7 @@ else
         run_id="${RUN_ID}" \
         loss="${CRITERION}" \
         loss.weight="${LAMBDA}" \
-        model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf" \
+        ${MODEL_OVERRIDE} \
         ${EXTRA_OVERRIDES}
 fi
 

@@ -15,7 +15,13 @@ def build_model(
 ) -> tuple[PreTrainedModel, ProcessorMixin]:
     """Instantiate model and processor, optionally wrapped with LoRA adapters."""
 
-    model = AutoModelForImageTextToText.from_pretrained(cfg.name, dtype=cfg.dtype)
+    # Eager attention is required for vl_saliency's hook-based extractor (sdpa /
+    # flash do not expose per-head attention weights). Models that default to
+    # sdpa (e.g. Qwen2.5-VL, Gemma-3) would otherwise yield an empty saliency
+    # map and silently collapse the alignment loss to zero.
+    model = AutoModelForImageTextToText.from_pretrained(
+        cfg.name, dtype=cfg.dtype, attn_implementation="eager"
+    )
     processor = AutoProcessor.from_pretrained(cfg.name)
 
     model.train()

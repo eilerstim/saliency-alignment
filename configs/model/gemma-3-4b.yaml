@@ -1,0 +1,14 @@
+name: google/gemma-3-4b-it
+
+dtype: bfloat16
+
+gradient_checkpointing: true
+
+# Gemma-3 mirrors LLaVA's submodule layout (vision_tower + multi_modal_projector
+# + language_model), so freezing these two gives the lm_only regime and the full
+# component ablation (lm_only / lm_proj / proj_only) transfers unchanged.
+freeze:
+- vision_tower
+- multi_modal_projector
+
+unfreeze: []
