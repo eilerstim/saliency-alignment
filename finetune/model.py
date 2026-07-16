@@ -24,6 +24,14 @@ def build_model(
     )
     processor = AutoProcessor.from_pretrained(cfg.name)
 
+    # Some models (e.g. Qwen2.5-VL) leave pad_token_id unset on the top-level
+    # config; vl_saliency needs it to mask padding tokens. Backfill it from the
+    # tokenizer (falling back to eos) so the saliency hook can infer it.
+    if getattr(model.config, "pad_token_id", None) is None:
+        model.config.pad_token_id = (
+            processor.tokenizer.pad_token_id or processor.tokenizer.eos_token_id
+        )
+
     model.train()
 
     if lora_cfg.enabled:

@@ -61,7 +61,9 @@ CRIT=${CRITS[$L]}
 LAM=${LAMS[$L]}
 
 RUN_ID="${CFG}_${CRIT}_w${LAM}_lm_only_lr${LR}_st${STEPS}_seed${SEED}"
-OVERRIDES="optim.lr=${LR} trainer.max_steps=${STEPS} seed=${SEED}"
+# trainer.num_nodes must match the sbatch --nodes below, or ranks on extra nodes
+# fall outside Lightning's computed world size (devices x num_nodes).
+OVERRIDES="optim.lr=${LR} trainer.max_steps=${STEPS} trainer.num_nodes=${NNODES} seed=${SEED}"
 
 TOK=${TOKENIZERS[$M]}
 [ "$TOK" = "__checkpoint__" ] && TOK="models/${RUN_ID}"
