@@ -7,7 +7,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
-#SBATCH --array=0-5
+# NOTE: --array is applied by the bootstrap below (after the venv setup job),
+# not as a header directive, so the initial submission runs the bootstrap once.
 # Cross-architecture test at the operating point (KL, lm_only, 1600 steps), each
 # model paired with its lambda=0 (CE-only) control. Each model's freeze list is
 # read from its own configs/model/<cfg>.yaml (selected via MODEL_CFG), so the
@@ -26,6 +27,19 @@ set -euo pipefail
 mkdir -p logs
 
 export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+
+# Bootstrap: build the venv once, then fan out (avoids a 6-way race on
+# $PROJECT_DIR/.venv). The initial submission has no array context, so submit the
+# one-shot setup job and resubmit this script as an array that waits for it. Once
+# setup completes the venv exists on disk, so each training job's env.sh just
+# activates it -- no concurrent creation.
+if [ -z "${SLURM_ARRAY_TASK_ID:-}" ]; then
+    SETUP_JOBID=$(sbatch --parsable scripts/cscs/arr_setup.sh)
+    sbatch --dependency=afterok:${SETUP_JOBID} --array=0-5 \
+        scripts/cscs/experiments/sweep_models.sh
+    echo "Submitted SETUP=${SETUP_JOBID} → sweep_models array (afterok:${SETUP_JOBID})"
+    exit 0
+fi
 
 LR=${LR:-2e-5}          # matched recipe across models
 STEPS=${STEPS:-1600}    # operating point for this test
