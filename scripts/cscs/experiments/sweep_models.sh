@@ -15,9 +15,10 @@
 #   llava-1.5-13b / gemma-3-4b -> freeze [vision_tower, multi_modal_projector]
 #   qwen2.5-vl-7b              -> freeze [visual]   (no separate projector)
 # LR is matched across models (isolates architecture; Qwen may want retuning).
-# Submits training + alignment eval (AMR/AP/NSS). Downstream lmms-eval is left as
-# a manual follow-up -- it needs per-architecture vLLM/tokenizer validation (run
-# arr_eval.sh with TOKENIZER=models/<run_id> once confirmed).
+# Submits training + alignment eval (AMR/AP/NSS) + downstream lmms-eval. The vLLM
+# tokenizer is set per model: LLaVA uses the hub tokenizer (its saved
+# tokenizer_class is patched for vLLM), Qwen/Gemma use their self-contained
+# checkpoint. Needs a saliency_eval vLLM new enough to support these arches.
 # LLaVA-13B trains on 2 nodes (8 GPUs); the 7B/4B models on 1 node (4 GPUs).
 # Layout (6 tasks = 3 models x {kl@0.5, default@0}):
 #   0,1 = llava-1.5-13b   2,3 = qwen2.5-vl-7b   4,5 = gemma-3-4b
@@ -32,6 +33,8 @@ SEED=${SEED:-42}
 
 CFGS=(llava-1.5-13b qwen2.5-vl-7b gemma-3-4b)
 NODES=(2            1             1)   # 13B needs more GPUs
+# vLLM tokenizer per model for downstream eval (__checkpoint__ -> the run's own).
+TOKENIZERS=(llava-hf/llava-1.5-13b-hf __checkpoint__ __checkpoint__)
 CRITS=(kl default)
 LAMS=(0.5 0)
 
@@ -46,11 +49,15 @@ LAM=${LAMS[$L]}
 RUN_ID="${CFG}_${CRIT}_w${LAM}_lm_only_lr${LR}_st${STEPS}_seed${SEED}"
 OVERRIDES="optim.lr=${LR} trainer.max_steps=${STEPS} seed=${SEED}"
 
+TOK=${TOKENIZERS[$M]}
+[ "$TOK" = "__checkpoint__" ] && TOK="models/${RUN_ID}"
+
 # MODEL_CFG selects the config group (and freeze list); propagated to the job via
 # sbatch's default --export=ALL. MODEL_SIZE positional is unused when MODEL_CFG set.
 TRAIN_JOBID=$(MODEL_CFG=${CFG} sbatch --parsable --nodes=${NNODES} \
     scripts/cscs/arr_train.sh "$RUN_ID" "$CRIT" "$LAM" na "$OVERRIDES")
 
 sbatch --dependency=afterok:${TRAIN_JOBID} scripts/cscs/arr_align_eval.sh "$RUN_ID" "false"
+TOKENIZER="$TOK" sbatch --dependency=afterok:${TRAIN_JOBID} scripts/cscs/arr_eval.sh "$RUN_ID"
 
-echo "Submitted TRAIN=${TRAIN_JOBID} (${NNODES} node(s)) → ALIGN-EVAL for ${RUN_ID}"
+echo "Submitted TRAIN=${TRAIN_JOBID} (${NNODES} node(s)) → ALIGN-EVAL + LM-EVAL for ${RUN_ID}"
