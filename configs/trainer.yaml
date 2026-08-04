@@ -2,6 +2,7 @@
 max_epochs: 10
 deterministic: true
 accelerator: auto
+num_nodes: 1              # override to match multi-node runs (world = devices x num_nodes)
 gradient_clip_val: null
 enable_model_summary: true
 

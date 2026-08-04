@@ -3,6 +3,7 @@
 # Designed for use on the CSCS Alps clariden cluster, in the saliency environment.
 
 export RESET_ENV=${RESET_ENV:-0}
+export PROJECT_DIR="${PROJECT_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
 
 # If reset_env is set, delete existing virtual environment
 if [ "$RESET_ENV" == "1" ]; then

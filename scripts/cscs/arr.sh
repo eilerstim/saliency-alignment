@@ -40,7 +40,7 @@ BASELINE_ID=$((NUM_KL_TASKS + NUM_FREEZES))
 # ---- BASELINE: eval only ----
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "${BASELINE_ID}" ]; then
     sbatch scripts/cscs/arr_eval.sh "${BASE_MODEL}" "true"
-    sbatch scripts/cscs/count/eval.sh "${BASE_MODEL}" "true"
+    # sbatch scripts/cscs/count/eval.sh "${BASE_MODEL}" "true"
     echo "Submitted EVAL only for baseline model ${BASE_MODEL} at $(date)"
     exit 0
 fi
@@ -66,7 +66,7 @@ echo "Submitting jobs for ${RUN_ID} at $(date)"
 # ---- Check if only evaluation is requested ----
 if [ "${EVAL_ONLY}" = "true" ]; then
     sbatch scripts/cscs/arr_eval.sh "$RUN_ID"
-    sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
+    # sbatch scripts/cscs/count/eval.sh "$RUN_ID" "false"
     echo "Submitted EVAL only for ${RUN_ID}"
     exit 0
 fi
@@ -80,7 +80,7 @@ TRAIN_JOBID=$(sbatch --parsable \
 sbatch --dependency=afterok:${TRAIN_JOBID} \
     scripts/cscs/arr_eval.sh "$RUN_ID"
 
-sbatch --dependency=afterok:${TRAIN_JOBID} \
-    scripts/cscs/count/eval.sh "$RUN_ID" "false"
+# sbatch --dependency=afterok:${TRAIN_JOBID} \
+#     scripts/cscs/count/eval.sh "$RUN_ID" "false"
 
 echo "Submitted TRAIN=${TRAIN_JOBID} → EVAL (afterok)"

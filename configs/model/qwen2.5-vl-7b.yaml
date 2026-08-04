@@ -1,0 +1,14 @@
+name: Qwen/Qwen2.5-VL-7B-Instruct
+
+dtype: bfloat16
+
+gradient_checkpointing: true
+
+# Qwen2.5-VL has no separate multi_modal_projector: the vision->text merger lives
+# inside `visual`. Freezing `visual` freezes the merger too, so this is the
+# lm_only regime (only the language model trains). The proj_only / lm_proj
+# component ablations do not map to this architecture.
+freeze:
+- visual
+
+unfreeze: []

@@ -29,7 +29,11 @@ fi
 echo "Starting LM-eval of ${MODEL_NAME} at $(date)"
 echo "MODEL_PATH=${MODEL_PATH}"
 
-MODEL_ARGS="model=${MODEL_PATH},tokenizer=llava-hf/llava-1.5-7b-hf,tensor_parallel_size=1,dtype=bfloat16,trust_remote_code=True"
+# LLaVA checkpoints patch tokenizer_class for vLLM, so they point at the hub
+# tokenizer by default; for other architectures set TOKENIZER to the checkpoint's
+# own tokenizer (e.g. TOKENIZER="${MODEL_PATH}").
+TOKENIZER="${TOKENIZER:-llava-hf/llava-1.5-7b-hf}"
+MODEL_ARGS="model=${MODEL_PATH},tokenizer=${TOKENIZER},tensor_parallel_size=1,dtype=bfloat16,trust_remote_code=True"
 
 srun --environment=saliency_eval bash -c '
     set -euo pipefail

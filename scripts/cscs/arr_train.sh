@@ -28,21 +28,38 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export NCCL_IB_DISABLE=1
 
-echo "Beginning finetuning of ${RUN_ID} at $(date)"
-echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} EXTRA_OVERRIDES=${EXTRA_OVERRIDES}"
-
-# EXTRA_OVERRIDES intentionally unquoted so multiple Hydra overrides split into args.
-srun \
-    --environment=saliency \
-    $PROJECT_DIR/.venv/bin/python -m finetune \
-    run_id="${RUN_ID}" \
-    loss="${CRITERION}" \
-    loss.weight="${LAMBDA}" \
-    model.name="llava-hf/llava-1.5-${MODEL_SIZE}-hf" \
-    ${EXTRA_OVERRIDES}
-
 MODEL_DIR="${PROJECT_DIR}/models/${RUN_ID}"
-if [ -f "${MODEL_DIR}/adapter_config.json" ]; then
+
+# Idempotent: skip training if this run's checkpoint already exists, so re-runs
+# and configs reused across experiments (e.g. A's knee run) are never retrained.
+# Set FORCE_RETRAIN=1 to override.
+if [ "${FORCE_RETRAIN:-0}" != "1" ] && { [ -f "${MODEL_DIR}/config.json" ] || [ -f "${MODEL_DIR}/adapter_config.json" ] || [ -d "${MODEL_DIR}-merged" ]; }; then
+    echo "Checkpoint for ${RUN_ID} already exists; skipping training (FORCE_RETRAIN=1 to override)."
+else
+    echo "Beginning finetuning of ${RUN_ID} at $(date)"
+    echo "CRITERION=${CRITERION} LAMBDA=${LAMBDA} MODEL_SIZE=${MODEL_SIZE} EXTRA_OVERRIDES=${EXTRA_OVERRIDES}"
+
+    # Select the model: a named config group (MODEL_CFG) if set -- it carries the
+    # correct per-architecture freeze list -- otherwise the LLaVA-1.5 name by size.
+    if [ -n "${MODEL_CFG:-}" ]; then
+        MODEL_OVERRIDE="model=${MODEL_CFG}"
+    else
+        MODEL_OVERRIDE="model.name=llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+    fi
+
+    # EXTRA_OVERRIDES intentionally unquoted so multiple Hydra overrides split into args.
+    srun \
+        --environment=saliency \
+        $PROJECT_DIR/.venv/bin/python -m finetune \
+        run_id="${RUN_ID}" \
+        loss="${CRITERION}" \
+        loss.weight="${LAMBDA}" \
+        ${MODEL_OVERRIDE} \
+        ${EXTRA_OVERRIDES}
+fi
+
+# Materialize a merged HF checkpoint for LoRA runs (skip if already merged).
+if [ -f "${MODEL_DIR}/adapter_config.json" ] && [ ! -d "${MODEL_DIR}-merged" ]; then
     echo "Merging LoRA adapter for ${RUN_ID} at $(date)"
     srun --environment=saliency \
         $PROJECT_DIR/.venv/bin/python -m finetune.merge \

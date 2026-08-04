@@ -1,15 +1,16 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import hydra
 import lightning as L
 import torch
 from hydra.core.hydra_config import HydraConfig
 from lightning.fabric.plugins.environments.slurm import SLURMEnvironment
+from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
-from pathlib import Path
 
 from vl_saliency import Saliency
 
@@ -53,6 +54,7 @@ def finetune(cfg: DictConfig):
     trainer = L.Trainer(
         default_root_dir=hydra_wd,
         logger=loggers,
+        callbacks=[LearningRateMonitor(logging_interval="step")],
         strategy=load_strategy(cfg.strategy),
         plugins=[SLURMEnvironment()],
         **cfg.trainer,
@@ -71,10 +73,15 @@ def finetune(cfg: DictConfig):
         model.save_pretrained(save_dir, state_dict=state)
         processor.save_pretrained(save_dir)
 
-        # Fix tokenizer_class for vLLM compatibility
-        tok_config_path = Path(save_dir) / "tokenizer_config.json"
-        tok_config = json.loads(tok_config_path.read_text())
-        tok_config["tokenizer_class"] = "LlamaTokenizer"
-        tok_config_path.write_text(json.dumps(tok_config, indent=2))
+        # Fix tokenizer_class for vLLM compatibility (LLaMA-tokenizer models
+        # only). Overwriting it for other architectures (Qwen, Gemma) would
+        # corrupt their tokenizer config, so it is only applied when the model
+        # config opts in via `tokenizer_class`.
+        tokenizer_class = cfg.model.get("tokenizer_class")
+        if tokenizer_class:
+            tok_config_path = Path(save_dir) / "tokenizer_config.json"
+            tok_config = json.loads(tok_config_path.read_text())
+            tok_config["tokenizer_class"] = tokenizer_class
+            tok_config_path.write_text(json.dumps(tok_config, indent=2))
 
         logger.info(f"Model weights saved to {save_dir}")

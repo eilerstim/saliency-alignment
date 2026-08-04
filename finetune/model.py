@@ -15,8 +15,22 @@ def build_model(
 ) -> tuple[PreTrainedModel, ProcessorMixin]:
     """Instantiate model and processor, optionally wrapped with LoRA adapters."""
 
-    model = AutoModelForImageTextToText.from_pretrained(cfg.name, dtype=cfg.dtype)
+    # Eager attention is required for vl_saliency's hook-based extractor (sdpa /
+    # flash do not expose per-head attention weights). Models that default to
+    # sdpa (e.g. Qwen2.5-VL, Gemma-3) would otherwise yield an empty saliency
+    # map and silently collapse the alignment loss to zero.
+    model = AutoModelForImageTextToText.from_pretrained(
+        cfg.name, dtype=cfg.dtype, attn_implementation="eager"
+    )
     processor = AutoProcessor.from_pretrained(cfg.name)
+
+    # Some models (e.g. Qwen2.5-VL) leave pad_token_id unset on the top-level
+    # config; vl_saliency needs it to mask padding tokens. Backfill it from the
+    # tokenizer (falling back to eos) so the saliency hook can infer it.
+    if getattr(model.config, "pad_token_id", None) is None:
+        model.config.pad_token_id = (
+            processor.tokenizer.pad_token_id or processor.tokenizer.eos_token_id
+        )
 
     model.train()
 

@@ -1,16 +1,4 @@
-_target_: torch.optim.lr_scheduler.SequentialLR
-optimizer: null   # will be supplied by instantiate()
-
-schedulers:
-  - _target_: torch.optim.lr_scheduler.LinearLR
-    start_factor: 0.0
-    end_factor: 1.0
-    total_iters: 6 # 3% of max_steps
-    optimizer: ${...optimizer}
-
-  - _target_: torch.optim.lr_scheduler.CosineAnnealingLR
-    T_max: 194       # total_steps - warmup_steps
-    eta_min: 0.0
-    optimizer: ${...optimizer}
-
-milestones: [6] # 3% of max_steps
+# 3% warmup + cosine decay. Step counts are passed by configure_optimizers,
+# derived from trainer.max_steps so the schedule tracks the length sweep.
+# Matches the LLaVA-1.5 recipe (cosine, 3% warmup; Liu et al. 2024, arXiv:2310.03744).
+_target_: transformers.get_cosine_schedule_with_warmup
