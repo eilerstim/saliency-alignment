@@ -5,6 +5,6 @@ phone;Describe the image.;A young woman is looking at her phone.;http://images.c
 ats;Describe the image.;Two cats are sleeping on a pink couch.;http://images.cocodataset.org/val2017/000000039769.jpg;Multiple instances;cats
 children;Describe the image.;A group of children are posing on a tennis court.;http://images.cocodataset.org/val2017/000000001000.jpg;Multiple instances;children
 players;Describe the image.;Two baseball players are running across the field.;http://images.cocodataset.org/val2017/000000000872.jpg;Multiple instances;players
-snow;Describe the image.;A skier in a red jacket is skiing down a slope covered in snow.;http://images.cocodataset.org/val2017/000000000785.jpg;Background region;snow
-sky;Describe the image.;A skier stands on a snowy mountain under a blue sky with clouds.;http://images.cocodataset.org/val2017/000000002532.jpg;Background region;sky
-grass;Describe the image.;A large brown bear is standing in the grass.;http://images.cocodataset.org/val2017/000000000285.jpg;Background region;grass
+snow;Describe the image.;A skier in a red jacket is skiing down a slope covered in snow.;http://images.cocodataset.org/val2017/000000000785.jpg;Region-filling class;snow
+sky;Describe the image.;A skier stands on a snowy mountain under a blue sky with clouds.;http://images.cocodataset.org/val2017/000000002532.jpg;Region-filling class;sky
+grass;Describe the image.;A large brown bear is standing in the grass.;http://images.cocodataset.org/val2017/000000000285.jpg;Region-filling class;grass
