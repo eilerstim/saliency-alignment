@@ -46,11 +46,12 @@ models = [tuple(spec.split("=", 1)) for spec in args.models]
 with open(args.csv_file, newline="") as f:
     rows = list(csv.DictReader(f, delimiter=";"))
 
-# manifest: (row index, model) -> clean map path
+# manifest: (model, word, image_url) -> clean map path. Keyed by content rather
+# than CSV row index so rows can be reordered or swapped without re-running viz.py.
 manifest = {}
 with open(os.path.join(args.maps_dir, "manifest.csv"), newline="") as f:
     for m in csv.DictReader(f, delimiter=";"):
-        manifest[(int(m["row"]), m["model"])] = m["clean_map"]
+        manifest[(m["model"], m["word"], m["image_url"])] = m["clean_map"]
 
 # group rows in CSV order; rows without a group form one unnamed group
 groups: "OrderedDict[str, list]" = OrderedDict()
@@ -108,7 +109,7 @@ for g, (gname, examples) in enumerate(groups.items()):
         idx, row = examples[r]
         panels = [square(load_input(row["image_url"]))]
         for name, _ in models:
-            path = manifest.get((idx, name))
+            path = manifest.get((name, row["word"], row["image_url"]))
             panels.append(square(Image.open(path).convert("RGB")) if path else None)
         for c, im in enumerate(panels):
             ax = fig.add_subplot(gs[r, col0 + c])

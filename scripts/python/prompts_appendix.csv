@@ -2,9 +2,9 @@ word;prompt;response;image_url;group;label
 bear;Describe the image.;A large brown bear is standing in the grass.;http://images.cocodataset.org/val2017/000000000285.jpg;Single object;bear
 sign;Describe the image.;A red stop sign stands at a street corner under a blue sky.;http://images.cocodataset.org/val2017/000000000724.jpg;Single object;sign
 phone;Describe the image.;A young woman is looking at her phone.;http://images.cocodataset.org/val2017/000000001296.jpg;Single object;phone
+rows;Describe the image.;The image shows a murder of crows flying above a tree branch.;https://i0.wp.com/urbannature.blog/wp-content/uploads/2016/03/crow-dance.jpg?resize=676%2C676&ssl=1;Multiple instances;crows
 ats;Describe the image.;Two cats are sleeping on a pink couch.;http://images.cocodataset.org/val2017/000000039769.jpg;Multiple instances;cats
 children;Describe the image.;A group of children are posing on a tennis court.;http://images.cocodataset.org/val2017/000000001000.jpg;Multiple instances;children
-players;Describe the image.;Two baseball players are running across the field.;http://images.cocodataset.org/val2017/000000000872.jpg;Multiple instances;players
 snow;Describe the image.;A skier in a red jacket is skiing down a slope covered in snow.;http://images.cocodataset.org/val2017/000000000785.jpg;Region-filling class;snow
 sky;Describe the image.;A skier stands on a snowy mountain under a blue sky with clouds.;http://images.cocodataset.org/val2017/000000002532.jpg;Region-filling class;sky
 grass;Describe the image.;A large brown bear is standing in the grass.;http://images.cocodataset.org/val2017/000000000285.jpg;Region-filling class;grass
