@@ -130,7 +130,9 @@ for model_type, model_path in models_to_run:
             add_generation_prompt=True,
         ).to(device)
 
-        with Saliency(model, backend="torch_eager"):
+        # The eager backend reads attention weights through hooks; no gradients
+        # are needed, and skipping autograd keeps activation memory small.
+        with Saliency(model, backend="torch_eager"), torch.no_grad():
             out = model(**inputs)
 
         sal = out.saliency.view(
