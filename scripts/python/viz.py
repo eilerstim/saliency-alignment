@@ -25,6 +25,19 @@ parser.add_argument(
     help="Models to visualize as NAME=PATH (repeatable). Default: base only.",
 )
 parser.add_argument("--dpi", type=int, default=200, help="Resolution of the saved maps")
+parser.add_argument(
+    "--dtype", default="float32", choices=["float32", "bfloat16", "float16"],
+    help="Model dtype (float32 matches the paper; bfloat16 halves memory for CPU runs)",
+)
+parser.add_argument(
+    "--offload_dir", default=None,
+    help="Enable accelerate disk offload into this folder for machines whose RAM "
+         "cannot hold the whole model (CPU-only inference).",
+)
+parser.add_argument(
+    "--max_cpu_mem", default="10GiB",
+    help="RAM budget for the weights when --offload_dir is set (rest is streamed from disk)",
+)
 args = parser.parse_args()
 
 models_to_run = [tuple(spec.split("=", 1)) for spec in args.models]
@@ -33,6 +46,7 @@ os.makedirs(args.output_dir, exist_ok=True)
 transformers.utils.logging.set_verbosity_error()
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = getattr(torch, args.dtype)
 
 
 def url_slug(url: str) -> str:
@@ -71,11 +85,19 @@ if not manifest_exists:
 
 for model_type, model_path in models_to_run:
     print(f"Loading {model_type} model...")
-    model = LlavaForConditionalGeneration.from_pretrained(
-        model_path,
-        dtype=torch.float32,
-        attn_implementation="eager",
-    ).to(device)
+    load_kwargs = dict(dtype=dtype, attn_implementation="eager")
+    if args.offload_dir:
+        # Keep up to --max_cpu_mem of weights resident and stream the remainder
+        # from disk each forward pass; the model must not be .to()-moved afterwards.
+        os.makedirs(args.offload_dir, exist_ok=True)
+        load_kwargs.update(
+            device_map="auto",
+            max_memory={"cpu": args.max_cpu_mem},
+            offload_folder=args.offload_dir,
+        )
+    model = LlavaForConditionalGeneration.from_pretrained(model_path, **load_kwargs)
+    if not args.offload_dir:
+        model = model.to(device)
 
     processor = AutoProcessor.from_pretrained(model_path, padding_side="left")
 
