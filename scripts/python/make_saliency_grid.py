@@ -63,9 +63,14 @@ os.makedirs(cache_dir, exist_ok=True)
 
 
 def load_input(url: str) -> Image.Image:
+    # Same cache layout as viz.py (<maps_dir>/inputs/<md5(url)[:10]>.jpg), so the
+    # grid reuses the exact images the maps were computed from.
     path = os.path.join(cache_dir, hashlib.md5(url.encode()).hexdigest()[:10] + ".jpg")
     if not os.path.exists(path):
-        Image.open(BytesIO(requests.get(url, timeout=60).content)).convert("RGB").save(path)
+        headers = {"User-Agent": "saliency-alignment-viz/0.1 (academic research)"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        Image.open(BytesIO(resp.content)).convert("RGB").save(path, quality=95)
     return Image.open(path).convert("RGB")
 
 

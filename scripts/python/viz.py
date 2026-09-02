@@ -3,6 +3,8 @@ import csv
 import hashlib
 import os
 import re
+import time
+from io import BytesIO
 from urllib.parse import urlparse
 
 import requests
@@ -60,6 +62,26 @@ def url_slug(url: str) -> str:
     return f"{stem}_{hashlib.md5(url.encode()).hexdigest()[:6]}"
 
 
+def load_image(url: str, cache_dir: str) -> Image.Image:
+    """Fetch an image once into ``cache_dir`` (keyed by URL hash) and reuse it.
+
+    Hosts such as Wikimedia rate-limit repeated fetches, and each CSV row would
+    otherwise be downloaded once per model; caching also makes re-runs offline.
+    """
+    os.makedirs(cache_dir, exist_ok=True)
+    path = os.path.join(cache_dir, hashlib.md5(url.encode()).hexdigest()[:10] + ".jpg")
+    if not os.path.exists(path):
+        headers = {"User-Agent": "saliency-alignment-viz/0.1 (academic research)"}
+        for attempt in range(5):
+            resp = requests.get(url, headers=headers, timeout=60)
+            if resp.ok and resp.headers.get("content-type", "").startswith("image/"):
+                break
+            time.sleep(5 * (attempt + 1))
+        resp.raise_for_status()
+        Image.open(BytesIO(resp.content)).convert("RGB").save(path, quality=95)
+    return Image.open(path).convert("RGB")
+
+
 def save_clean_map(fig, path: str, dpi: int) -> None:
     """Save only the image axes of a saliency figure (no title, colorbar, margins).
 
@@ -109,26 +131,25 @@ for model_type, model_path in models_to_run:
 
         print(f"\nProcessing word='{word}', image_url='{image_url}'")
 
-        image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
+        image = load_image(image_url, os.path.join(args.output_dir, "inputs"))
 
         messages = [
             {
                 "role": "user",
                 "content": [
-                    {"type": "image", "url": image_url},
+                    {"type": "image"},
                     {"type": "text", "text": prompt},
                 ],
             },
             {"role": "assistant", "content": [{"type": "text", "text": response}]},
         ]
 
-        inputs = processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-            add_generation_prompt=True,
-        ).to(device)
+        # Render the chat template to text and hand the processor the local
+        # image, so nothing is re-fetched from the URL at run time.
+        prompt_text = processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = processor(images=image, text=prompt_text, return_tensors="pt").to(device)
 
         # The eager backend reads attention weights through hooks; no gradients
         # are needed, and skipping autograd keeps activation memory small.
