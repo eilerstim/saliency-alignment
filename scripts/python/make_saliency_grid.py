@@ -21,6 +21,10 @@ from io import BytesIO
 import matplotlib
 
 matplotlib.use("Agg")
+# Embed text as TrueType (Type 42) rather than Type 3, which some submission
+# systems flag and which renders poorly when zoomed.
+matplotlib.rcParams["pdf.fonttype"] = 42
+matplotlib.rcParams["ps.fonttype"] = 42
 import matplotlib.pyplot as plt  # noqa: E402
 import requests  # noqa: E402
 from PIL import Image  # noqa: E402
