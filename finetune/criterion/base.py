@@ -87,6 +87,14 @@ class Criterion(ABC):
             # merge annotations per token -> (gen_len, H, W)
             token_mask = seg_mask.any(dim=1)
 
+            # Drop tokens whose referent lies entirely outside the (cropped)
+            # mask: an empty target distribution carries no supervision.
+            has_pixels = token_mask.flatten(1).any(dim=1)
+            if not has_pixels.any():
+                continue
+            attn = attn[has_pixels]
+            token_mask = token_mask[has_pixels]
+
             loss = self.compute_loss(attn, token_mask)
             losses.append(loss)
 

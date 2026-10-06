@@ -131,6 +131,14 @@ def per_image_scores(
             (mask[None, None] == seg_ids[:, :, None, None]) & valid[:, :, None, None]
         ).any(dim=1)
 
+        # Tokens whose referent is fully outside the (cropped) mask have no
+        # target pixels; the metrics return NaN for them and they are ignored.
+        has_pixels = token_mask.flatten(1).any(dim=1)
+        if not has_pixels.any():
+            continue
+        attn = attn[has_pixels]
+        token_mask = token_mask[has_pixels]
+
         per_token = torch.stack(
             [amr(attn, token_mask), average_precision(attn, token_mask),
              nss(attn, token_mask)], dim=-1

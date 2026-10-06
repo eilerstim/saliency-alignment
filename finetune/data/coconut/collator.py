@@ -5,12 +5,15 @@ import torch
 from transformers import ProcessorMixin
 
 from finetune.data.coconut.tokenization import (
+    align_annotations_to_offsets,
+    annotation_spans,
     parse_annotated_caption,
-    tokenize_from_parsed,
 )
-from finetune.data.utils import find_sequence
+from finetune.data.utils import find_sequence, visible_crop_box
 
 logger = logging.getLogger(__name__)
+
+PROMPT = "Describe the image in detail."
 
 
 def _compute_suffix_tokens(processor: ProcessorMixin) -> list[int]:
@@ -46,6 +49,12 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         Collate function compatible with ``torch.utils.data.DataLoader``.
     """
     suffix_tokens = _compute_suffix_tokens(processor)
+    tokenizer = processor.tokenizer
+    if not getattr(tokenizer, "is_fast", False):
+        raise TypeError(
+            "The COCONut collator needs a fast tokenizer: annotation IDs are "
+            "assigned to tokens through their character offsets."
+        )
 
     def collate_fn(examples: list[dict]) -> dict | None:
         """Collate function for training with annotation-aware tokenization.
@@ -68,9 +77,21 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             Only the caption tokens (assistant's response) have valid labels.
 
         Segment ID Alignment:
-            Segment IDs from COCONut annotations are aligned token-by-token with
-            the caption portion of ``input_ids``. Each token can have multiple
-            segment IDs (e.g., when a word refers to multiple objects).
+            The prompt is tokenized a second time with character offsets, and
+            every caption token receives the segment IDs of the annotated
+            span(s) its characters fall into. The caption tokens of this
+            tokenization are checked to be identical to the ones the processor
+            produced, so segment IDs always refer to the tokens the model sees.
+            Each token can have multiple segment IDs (e.g., when a word refers
+            to multiple objects).
+
+        Mask Geometry:
+            The image processor center-crops non-square images, so the
+            panoptic mask is cropped to the same region
+            (:func:`finetune.data.utils.visible_crop_box`) before it is
+            returned. The loss and the alignment metrics upsample the patch
+            grid to the mask's shape, which is only valid when both cover
+            the same part of the image.
 
         Args:
             examples: List of dicts with keys image, caption, mask, segments_info.
@@ -80,7 +101,8 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         """
         images = []
         texts = []
-        parsed_segments_list: list[list[tuple[list[int], str]]] = []
+        clean_captions: list[str] = []
+        spans_list: list[list[tuple[int, int, list[int]]]] = []
         panoptic_masks = []
 
         for example in examples:
@@ -90,7 +112,7 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
 
             # Parse once — reused for both clean caption and annotation alignment
             parsed_segments = parse_annotated_caption(caption)
-            clean_caption = "".join(text for _, text in parsed_segments)
+            clean_caption, spans = annotation_spans(parsed_segments)
 
             if not clean_caption.strip():
                 continue  # skip this example, not the whole batch
@@ -100,7 +122,7 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
                     "role": "user",
                     "content": [
                         {"type": "image"},
-                        {"type": "text", "text": "Describe the image in detail."},
+                        {"type": "text", "text": PROMPT},
                     ],
                 },
                 {
@@ -112,9 +134,20 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
                 messages, tokenize=False, add_generation_prompt=False
             )
 
+            if tuple(mask.shape) != (image.height, image.width):
+                raise ValueError(
+                    f"Mask shape {tuple(mask.shape)} does not match image size "
+                    f"(H, W) = {(image.height, image.width)}."
+                )
+            left, top, right, bottom = visible_crop_box(
+                image.size, processor.image_processor
+            )
+            mask = mask[top:bottom, left:right]
+
             images.append(image)
             texts.append(prompt)
-            parsed_segments_list.append(parsed_segments)
+            clean_captions.append(clean_caption)
+            spans_list.append(spans)
             panoptic_masks.append(mask)
 
         if not images:
@@ -131,21 +164,54 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         )
 
         input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
         batch_size, seq_len = input_ids.shape
 
         # Labels: ignore padding tokens
         labels = input_ids.clone()
-        labels[labels == processor.tokenizer.pad_token_id] = -100
+        labels[labels == tokenizer.pad_token_id] = -100
 
-        # First pass: tokenize annotations (reusing parsed segments) and find max_segments
-        tokenized_segments = []
+        # First pass: per-token segment IDs from character offsets, and max_segments
+        tokenized_segments: list[list[list[int]]] = []
+        caption_starts: list[int] = []
         max_segments = 1
 
-        for parsed in parsed_segments_list:
-            _, cap_ann_ids = tokenize_from_parsed(
-                parsed, processor.tokenizer, add_special_tokens=False
+        for i, (prompt, clean_caption, spans) in enumerate(
+            zip(texts, clean_captions, spans_list, strict=True)
+        ):
+            caption_start = find_sequence(input_ids[i], suffix_tokens)
+            if caption_start < 0:
+                raise ValueError("Assistant header not found in tokenized prompt.")
+            caption_start += len(suffix_tokens)
+            caption_len = int(attention_mask[i, caption_start:].sum())
+            caption_ids = input_ids[i, caption_start : caption_start + caption_len]
+
+            # Same text, tokenized once more to get character offsets. The
+            # processor only rewrites the ``<image>`` placeholder, which lies
+            # before the caption, so the caption tokens must coincide.
+            encoding = tokenizer(
+                prompt, add_special_tokens=True, return_offsets_mapping=True
             )
+            ref_ids = encoding["input_ids"]
+            ref_start = find_sequence(torch.tensor(ref_ids), suffix_tokens)
+            if ref_start < 0:
+                raise ValueError("Assistant header not found in offset tokenization.")
+            ref_start += len(suffix_tokens)
+            if ref_ids[ref_start:] != caption_ids.tolist():
+                raise ValueError(
+                    "Caption tokens differ between the processor and the offset "
+                    "tokenization; cannot align annotations."
+                )
+
+            caption_char0 = prompt.rindex(clean_caption)
+            offsets = [
+                (start - caption_char0, end - caption_char0)
+                for start, end in encoding["offset_mapping"][ref_start:]
+            ]
+            cap_ann_ids = align_annotations_to_offsets(offsets, clean_caption, spans)
+
             tokenized_segments.append(cap_ann_ids)
+            caption_starts.append(caption_start)
             for ann_ids in cap_ann_ids:
                 if len(ann_ids) > max_segments:
                     max_segments = len(ann_ids)
@@ -158,17 +224,13 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         # Collect indices and values for vectorized assignment
         batch_idx, token_idx, seg_idx, values = [], [], [], []
 
-        for i, cap_ann_ids in enumerate(tokenized_segments):
-            caption_start = find_sequence(input_ids[i], suffix_tokens) + len(
-                suffix_tokens
-            )
-
+        for i, (cap_ann_ids, caption_start) in enumerate(
+            zip(tokenized_segments, caption_starts, strict=True)
+        ):
             # Mask prompt tokens
             labels[i, :caption_start] = -100
 
-            caption_len = min(len(cap_ann_ids), seq_len - caption_start)
-
-            for j, ann_ids in enumerate(cap_ann_ids[:caption_len]):
+            for j, ann_ids in enumerate(cap_ann_ids):
                 for k, ann_id in enumerate(ann_ids):
                     batch_idx.append(i)
                     token_idx.append(caption_start + j)

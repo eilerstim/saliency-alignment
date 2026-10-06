@@ -62,12 +62,86 @@ def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:
     return result
 
 
+def annotation_spans(
+    parsed_segments: list[tuple[list[int], str]],
+) -> tuple[str, list[tuple[int, int, list[int]]]]:
+    """Clean caption text and the character span of every annotated piece.
+
+    Args:
+        parsed_segments: Output of ``parse_annotated_caption``.
+
+    Returns:
+        Tuple of (clean_caption, spans) where ``spans`` holds
+        ``(start, end, annotation_ids)`` character ranges into
+        ``clean_caption`` for the annotated pieces only.
+    """
+    parts: list[str] = []
+    spans: list[tuple[int, int, list[int]]] = []
+    pos = 0
+    for annotation_ids, text in parsed_segments:
+        if annotation_ids:
+            spans.append((pos, pos + len(text), annotation_ids))
+        parts.append(text)
+        pos += len(text)
+    return "".join(parts), spans
+
+
+def align_annotations_to_offsets(
+    offsets: list[tuple[int, int]],
+    text: str,
+    spans: list[tuple[int, int, list[int]]],
+) -> list[list[int]]:
+    """Assign annotation IDs to tokens of an *existing* tokenization.
+
+    Tokenizing each annotated piece on its own (``tokenize_from_parsed``)
+    does not reproduce the tokens the model sees: SentencePiece-style
+    tokenizers prepend a word boundary to every call, so a piece such as
+    ``" and "`` encodes to ``['▁', '▁and', '▁']`` in isolation but to
+    ``['▁and']`` inside the caption. Every extra token shifts all later
+    annotations onto the wrong positions. This function instead reads the
+    character offsets of the tokens that are actually in the sequence and
+    assigns each token the IDs of every annotated span it overlaps.
+
+    A token's leading whitespace is ignored for the overlap test, so a token
+    that only touches a span through the space in front of it, or that is
+    whitespace only, receives no annotation.
+
+    Args:
+        offsets: ``(start, end)`` character offsets of each token into ``text``.
+        text: The clean caption the offsets index into.
+        spans: Output of ``annotation_spans``.
+
+    Returns:
+        One (possibly empty) sorted list of annotation IDs per token.
+    """
+    per_token: list[list[int]] = []
+    for start, end in offsets:
+        # Tokens outside ``text`` (e.g. the chat template's trailing space
+        # after the caption) are clamped away and receive no annotation.
+        start, end = max(start, 0), min(end, len(text))
+        while start < end and text[start].isspace():
+            start += 1
+        ids: set[int] = set()
+        if start < end:
+            for span_start, span_end, annotation_ids in spans:
+                if start < span_end and span_start < end:
+                    ids.update(annotation_ids)
+        per_token.append(sorted(ids))
+    return per_token
+
+
 def tokenize_from_parsed(
     parsed_segments: list[tuple[list[int], str]],
     tokenizer: PreTrainedTokenizer,
     add_special_tokens: bool = False,
 ) -> tuple[list[int], list[list[int]]]:
     """Tokenize already-parsed segments while preserving annotation info.
+
+    .. warning::
+        The per-piece encoding does **not** match the tokens of the full
+        caption in context (see ``align_annotations_to_offsets``). Do not use
+        the returned annotation list to index into a sequence that was
+        tokenized as a whole.
 
     This avoids re-parsing when the caller has already called
     ``parse_annotated_caption``.
