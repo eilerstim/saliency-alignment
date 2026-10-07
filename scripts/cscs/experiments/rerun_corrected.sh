@@ -14,8 +14,11 @@
 # would otherwise skip as already trained.
 #
 # Stages (STAGE env var):
-#   pilot  (a) corrected intrinsic metrics for the base model and, when
-#              OLD_PROJECT_DIR is set, for the ORIGINAL 800-step checkpoint;
+#   pilot  (a) corrected intrinsic metrics for the base model and for the
+#              paper's published 2,400-step checkpoint on Hugging Face
+#              (REF_MODELS, space separated; trained with the OLD pipeline,
+#              so this shows what the old models score under the corrected
+#              metric: paper values AMR 8.44 / AP 0.62 / NSS 2.27);
 #          (b) one corrected training run at the paper's operating point
 #              (kl, lambda 0.5, LM-only, lr 2e-5, 800 steps) with both
 #              evaluations. Compare with the paper before launching `full`.
@@ -23,12 +26,12 @@
 #          duration-matched at 800 and 2400 steps), lambda sweep, component
 #          ablation, LoRA rank sweep. Idempotent: finished runs are skipped.
 #
-# Downstream (lmms-eval) numbers of the base model do not depend on the
-# collator and are not re-run here; reuse them from the original results.
+# The base model's downstream (lmms-eval) numbers do not depend on the
+# collator; `full` re-runs them anyway so the final report is self-contained.
 #
 # Usage:
-#   STAGE=pilot [OLD_PROJECT_DIR=/path/to/original/clone] sbatch scripts/cscs/experiments/rerun_corrected.sh
-#   STAGE=full sbatch scripts/cscs/experiments/rerun_corrected.sh
+#   STAGE=pilot sbatch scripts/cscs/experiments/rerun_corrected.sh
+#   STAGE=full  sbatch scripts/cscs/experiments/rerun_corrected.sh
 set -euo pipefail
 mkdir -p logs
 
@@ -37,6 +40,28 @@ STAGE="${STAGE:-pilot}"
 SEED="${SEED:-42}"
 MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
+REF_MODELS="${REF_MODELS:-teilers/llava-1.5-7b-saliency-kl0.5-st2400}"
+
+# Evaluation jobs for a Hugging Face model id (no training). The align_eval
+# output lands in outputs/<id with / replaced by __>/.
+eval_hub_model() {
+    local model="$1"
+    local tag="${model//\//__}"
+    if [ -f "${PROJECT_DIR}/outputs/${tag}/alignment_summary.json" ]; then
+        echo "[skip align-eval] ${model}"
+    else
+        sbatch scripts/cscs/arr_align_eval.sh "$model" "true" >/dev/null
+        echo "[align-eval] ${model}"
+    fi
+    if [ "${2:-}" = "with-downstream" ]; then
+        if [ -d "${PROJECT_DIR}/results/lm-eval/${model}" ]; then
+            echo "[skip lm-eval] ${model}"
+        else
+            sbatch scripts/cscs/arr_eval.sh "$model" "true" >/dev/null
+            echo "[lm-eval] ${model}"
+        fi
+    fi
+}
 
 LM_ONLY="model.freeze=[vision_tower,multi_modal_projector] model.unfreeze=[]"
 PROJ_ONLY="model.freeze=[all] model.unfreeze=[multi_modal_projector]"
@@ -77,22 +102,17 @@ run_id() {  # run_id CRIT LAMBDA FREEZE_NAME LR STEPS [SUFFIX]
 case "$STAGE" in
 pilot)
     # (a) corrected intrinsic metrics for existing models (evaluation only)
-    sbatch scripts/cscs/arr_align_eval.sh "$BASE_MODEL" "true" >/dev/null
-    echo "[align-eval] ${BASE_MODEL} (corrected metrics)"
-    if [ -n "${OLD_PROJECT_DIR:-}" ]; then
-        OLD_CKPT="${OLD_PROJECT_DIR}/models/llava-1.5-${MODEL_SIZE}_kl_w0.5_lm_only_lr2e-5_st800_seed${SEED}"
-        if [ -f "${OLD_CKPT}/config.json" ]; then
-            sbatch scripts/cscs/arr_align_eval.sh "$OLD_CKPT" "true" >/dev/null
-            echo "[align-eval] original 800-step checkpoint under corrected metrics: ${OLD_CKPT}"
-        else
-            echo "WARNING: ${OLD_CKPT} not found; skipping corrected eval of the original checkpoint"
-        fi
-    fi
+    eval_hub_model "$BASE_MODEL"
+    for ref in $REF_MODELS; do
+        eval_hub_model "$ref"
+    done
     # (b) one corrected training run at the operating point
     submit "$(run_id kl 0.5 lm_only 2e-5 800)" kl 0.5 \
         "$LM_ONLY optim.lr=2e-5 trainer.max_steps=800 seed=${SEED}"
     ;;
 full)
+    # Base model: intrinsic metrics (skipped if the pilot did them) + downstream
+    eval_hub_model "$BASE_MODEL" with-downstream
     # Length series, lambda = 0.5, LM-only (800 is the pilot run; skipped if done)
     for st in 200 800 1600 2400; do
         submit "$(run_id kl 0.5 lm_only 2e-5 "$st")" kl 0.5 \
