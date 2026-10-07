@@ -73,9 +73,16 @@ def main() -> int:
 
     if event == "Notification":
         body = str(payload.get("message", "Claude Code is waiting for you."))
-        title = f"Claude Code needs input [{host} {session}]"
+        kind = str(
+            payload.get("title") or payload.get("notification_type") or "needs input"
+        )
+        title = f"Claude Code {kind} [{host} {session}]"
     else:
-        body = last_assistant_text(str(payload.get("transcript_path", "")))
+        # Stop payloads carry the final message directly; the transcript is
+        # the fallback for older versions.
+        body = str(payload.get("last_assistant_message") or "").strip()
+        if not body:
+            body = last_assistant_text(str(payload.get("transcript_path", "")))
         if not body:
             return 0
         title = f"Claude Code update [{host} {session}]"
