@@ -86,11 +86,13 @@ before the previous check passes.
    limit interrupted leaves a partial directory that the downloader then
    skips: if a count is short, remove only that incomplete directory and
    resubmit. This is the one exception to the no-delete rule under `data/`.
-4. **Weights & Biases.** Training logs to the W&B entity in
-   `configs/config.yaml`. The shell that submits training must have
-   `WANDB_API_KEY` exported (sbatch forwards the environment) or
-   `WANDB_MODE=offline`. Ask the user to export the key; never print it,
-   never write it to a file in the repository.
+4. **Credentials.** Two secrets are needed and both come from the
+   environment of the shell that runs `sbatch` (sbatch forwards it to the
+   job and into the container): `HF_TOKEN` for the Hub downloads in the
+   data step and the model pulls, and `WANDB_API_KEY` for training logs
+   (or `WANDB_MODE=offline`). Check with `test -n "$HF_TOKEN" && echo set`;
+   never print a token, never write one into the repository or CLAUDE.md,
+   and never pass one on a command line.
 5. **Smoke test** on one GPU before spending real compute:
    `PROJECT_DIR=$PWD srun --account=aa013 --time=00:20:00 --gpus=1 --environment=saliency .venv/bin/python scripts/python/check_alignment.py run_id=check_alignment`
    prints, per supervised token, its decoded text, mask size and AMR. The
@@ -131,6 +133,23 @@ before the previous check passes.
    followed by a list of runs that are missing or failed and why. That
    text is pasted into the paper discussion, so keep it complete and
    unedited.
+
+## Status updates and accounting
+
+- Every message to the user ends with a short status block: jobs running /
+  pending / finished / failed (from `squeue --me` and `sacct`), the current
+  step of the runbook, the next thing you will check and when, and the
+  compute used so far from `scripts/cscs/gpu_hours.sh <start date>`
+  (GPU-hours and node-hours since the re-run began; CSCS bills node-hours,
+  one GH200 node is 4 GPUs). Keep the block under ten lines.
+- A `Stop` hook (`scripts/cscs/notify.py`, configured in
+  `.claude/settings.json`) forwards each of your messages to the user's
+  phone when `CLAUDE_NOTIFY_URL` is set, and a `Notification` hook tells
+  them when you are waiting for input. Write status messages so they make
+  sense on a phone screen: outcome first, numbers in a short table, no
+  long log dumps (quote at most the decisive lines of a log).
+- Report compute in the final report as well: total GPU-hours and
+  node-hours, split by training, align-eval, and lm-eval job names.
 
 ## Rules
 

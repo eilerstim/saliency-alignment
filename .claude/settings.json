@@ -23,13 +23,40 @@
       "Bash(find data:*)",
       "Bash(cat:*)",
       "Bash(grep:*)",
-      "Read(**)"
+      "Read(**)",
+      "Bash(scripts/cscs/gpu_hours.sh:*)",
+      "Bash(bash scripts/cscs/gpu_hours.sh:*)",
+      "Bash(sreport:*)"
     ],
     "deny": [
       "Bash(rm -rf:*)",
       "Bash(scancel:*)",
       "Bash(git push --force:*)",
       "Bash(git reset --hard:*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/cscs/notify.py"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/cscs/notify.py"
+          }
+        ]
+      }
     ]
   }
 }
