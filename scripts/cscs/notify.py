@@ -17,8 +17,6 @@ The script never fails the hook (always exits 0) and never sends secrets:
 only the assistant's own text, truncated, plus host and session id.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import socket
