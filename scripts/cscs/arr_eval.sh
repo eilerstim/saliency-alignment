@@ -38,12 +38,17 @@ MODEL_ARGS="model=${MODEL_PATH},tokenizer=${TOKENIZER},tensor_parallel_size=1,dt
 srun --environment=saliency_eval bash -c '
     set -euo pipefail
     uv pip install --force-reinstall numpy scipy --system
+    # lmms-eval logs its evaluation-tracker args at INFO level, and they
+    # include HF_TOKEN. Scrub tokens from both streams so none lands in logs/
+    # (pipefail keeps a failing lmms_eval failing the job).
+    scrub() { sed -u -E "s/hf_[A-Za-z0-9]{20,}/hf_<redacted>/g"; }
     python3 -m lmms_eval \
         --model vllm \
         --model_args "'"${MODEL_ARGS}"'" \
         --output_path "'"${PROJECT_DIR}"'/results/lm-eval/'"${MODEL_NAME}"'" \
         --include_path "'"${PROJECT_DIR}"'/eval/lmms_eval/tasks" \
-        --tasks o3,vlms_are_biased,cv_bench_2d,cv_bench_3d,mmvp,mmstar,pope,countbench
+        --tasks o3,vlms_are_biased,cv_bench_2d,cv_bench_3d,mmvp,mmstar,pope,countbench \
+        2> >(scrub >&2) | scrub
 '
 
 echo "Finished LM-eval evaluation at $(date)"
