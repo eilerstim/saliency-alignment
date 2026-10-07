@@ -53,8 +53,11 @@ with `crit` in `{kl, default}` (`default` is the lambda=0 control, use
 
 The collator was fixed in commit d23fe50 (annotations were assigned to the
 wrong caption tokens; masks were not cropped to the image processor's center
-crop). All intrinsic numbers and all trained models of the paper predate the
-fix. The re-run is driven by `scripts/cscs/experiments/rerun_corrected.sh`:
+crop) and hardened afterwards; the training sequence now also ends with
+`</s>` as a supervised token instead of a bare space, as in the original
+LLaVA-1.5 recipe. All intrinsic numbers and all trained models of the paper
+predate these changes. The re-run is driven by
+`scripts/cscs/experiments/rerun_corrected.sh`:
 
 1. Setup in a fresh clone (never reuse the old `models/`):
    `git clone -b claude/wizardly-pasteur-cg48cb <repo> $SCRATCH/saliency-alignment-v2`,

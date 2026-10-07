@@ -82,7 +82,8 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             - All prompt tokens (BOS, user message, image tokens, assistant header)
             - Padding tokens
 
-            Only the caption tokens (assistant's response) have valid labels.
+            Only the caption tokens (assistant's response) and the closing
+            EOS token have valid labels.
 
         Segment ID Alignment:
             The prompt is tokenized a second time with character offsets, and
@@ -141,6 +142,13 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             prompt = processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=False
             )
+            # Close the assistant turn the way LLaVA-1.5 was trained: the HF
+            # chat template ends the turn with a bare space and no EOS, which
+            # would train the model to emit a space and never to stop. Drop
+            # that space and make </s> the last supervised token.
+            if prompt.endswith(clean_caption + " "):
+                prompt = prompt[:-1]
+            prompt += tokenizer.eos_token
 
             if tuple(mask.shape) != (image.height, image.width):
                 logger.warning(
