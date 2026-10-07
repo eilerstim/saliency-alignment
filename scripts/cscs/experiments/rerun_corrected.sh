@@ -22,6 +22,11 @@
 #          (b) one corrected training run at the paper's operating point
 #              (kl, lambda 0.5, LM-only, lr 2e-5, 800 steps) with both
 #              evaluations. Compare with the paper before launching `full`.
+#   lambda the loss-weight sweep at 200 steps (lambda 0, 0.05, 0.1, 0.25,
+#          0.5, 1, 5), to confirm the operating point under the corrected
+#          signal before the rest is trained at lambda 0.5. Selection rule:
+#          localization (AMR/AP/NSS) against validation loss; downstream
+#          columns are reported but not used.
 #   full   every remaining run: length series, lambda=0 controls (now also
 #          duration-matched at 800 and 2400 steps), lambda sweep, component
 #          ablation, LoRA rank sweep. Idempotent: finished runs are skipped.
@@ -110,6 +115,14 @@ pilot)
     submit "$(run_id kl 0.5 lm_only 2e-5 800)" kl 0.5 \
         "$LM_ONLY optim.lr=2e-5 trainer.max_steps=800 seed=${SEED}"
     ;;
+lambda)
+    submit "$(run_id default 0 lm_only 2e-5 200)" default 0 \
+        "$LM_ONLY optim.lr=2e-5 trainer.max_steps=200 seed=${SEED}"
+    for lam in 0.05 0.1 0.25 0.5 1 5; do
+        submit "$(run_id kl "$lam" lm_only 2e-5 200)" kl "$lam" \
+            "$LM_ONLY optim.lr=2e-5 trainer.max_steps=200 seed=${SEED}"
+    done
+    ;;
 full)
     # Base model: intrinsic metrics (skipped if the pilot did them) + downstream
     eval_hub_model "$BASE_MODEL" with-downstream
@@ -140,7 +153,7 @@ full)
     done
     ;;
 *)
-    echo "Unknown STAGE='${STAGE}' (expected pilot or full)" >&2
+    echo "Unknown STAGE='${STAGE}' (expected pilot, lambda, or full)" >&2
     exit 1
     ;;
 esac
