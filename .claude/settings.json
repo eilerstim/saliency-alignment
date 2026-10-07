@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sbatch:*)",
+      "Bash(squeue:*)",
+      "Bash(sacct:*)",
+      "Bash(sinfo:*)",
+      "Bash(scontrol show:*)",
+      "Bash(ls:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(wc:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(python scripts/python/aggregate_results.py:*)",
+      "Read(**)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(scancel:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)"
+    ]
+  }
+}
