@@ -120,13 +120,20 @@ before the previous check passes.
    MMStar, MMVP, O3, POPE, VLMsB acc, VLMsB bias): 40.9 56.7 52.8 35.4 62.0
    44.4 83.4 16.0 36.5. Report the corrected numbers next to these; do not
    edit the paper's tables yourself.
-8. **Full sweep** only after the user says so:
+8. **Lambda sweep first** (user's choice, cheap):
+   `STAGE=lambda sbatch scripts/cscs/experiments/rerun_corrected.sh` trains
+   the seven 200-step weight-sweep runs (lambda 0 to 5) with both
+   evaluations. When their align-evals are in, report AMR/AP/NSS and
+   val-CE per lambda; the operating point stays 0.5 unless the user
+   decides otherwise from that table (downstream is not used for the
+   choice). Wait for the user's go before the full stage.
+9. **Full sweep** only after the user says so:
    `STAGE=full sbatch scripts/cscs/experiments/rerun_corrected.sh` submits
    the remaining 17 training runs with both evaluations plus the base
    model's downstream suite. Finished runs are skipped, so resubmit the
    same command after failures. Expect a day or more of wall time; check
    back periodically rather than polling every minute.
-9. **Final report.** When every job has finished or failed for good, run
+10. **Final report.** When every job has finished or failed for good, run
    `python scripts/python/aggregate_results.py --out results/summary.csv`
    and `python scripts/python/make_report.py results/summary.csv > results/report.md`,
    then give the user the full content of `results/report.md` verbatim,
