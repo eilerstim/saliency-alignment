@@ -64,20 +64,6 @@ class Criterion(ABC):
             seg_ids = seg_ids[has_segments]
             attn = attn[has_segments]
 
-            # Upsample attn to match annotation size (gen_len, H, W)
-            attn = F.interpolate(
-                attn.unsqueeze(1),
-                size=mask.shape,
-                mode="bilinear",
-                align_corners=False,  # type: ignore
-            ).squeeze(1)
-
-            # Normalize to distribution
-            attn = attn.float()  # Ensure fp32
-            attn = attn.flatten(1)  # (gen_len, H * W)
-            attn = torch.softmax(attn, dim=1)
-            attn = attn.view(-1, *mask.shape)  # (gen_len, H, W)
-
             # Build mask without -1
             valid_seg = seg_ids != -1  # (N, max_segments)
             seg_mask = (mask[None, None] == seg_ids[:, :, None, None]) & valid_seg[
@@ -94,6 +80,20 @@ class Criterion(ABC):
                 continue
             attn = attn[has_pixels]
             token_mask = token_mask[has_pixels]
+
+            # Upsample attn to match annotation size (gen_len, H, W)
+            attn = F.interpolate(
+                attn.unsqueeze(1),
+                size=mask.shape,
+                mode="bilinear",
+                align_corners=False,  # type: ignore
+            ).squeeze(1)
+
+            # Normalize to distribution
+            attn = attn.float()  # Ensure fp32
+            attn = attn.flatten(1)  # (gen_len, H * W)
+            attn = torch.softmax(attn, dim=1)
+            attn = attn.view(-1, *mask.shape)  # (gen_len, H, W)
 
             loss = self.compute_loss(attn, token_mask)
             losses.append(loss)

@@ -112,6 +112,19 @@ def per_image_scores(
         seg_ids = seg_ids[has_segments]
         attn = attn[has_segments]
 
+        valid = seg_ids != -1
+        token_mask = (
+            (mask[None, None] == seg_ids[:, :, None, None]) & valid[:, :, None, None]
+        ).any(dim=1)
+
+        # Tokens whose referent is fully outside the (cropped) mask have no
+        # target pixels; the metrics return NaN for them and they are ignored.
+        has_pixels = token_mask.flatten(1).any(dim=1)
+        if not has_pixels.any():
+            continue
+        attn = attn[has_pixels]
+        token_mask = token_mask[has_pixels]
+
         # Bilinear-upsample to annotation resolution, then softmax over the
         # spatial dim so AMR sees a proper probability distribution. Raw
         # ``saliency`` is logits (the training criterion softmaxes before
@@ -125,19 +138,6 @@ def per_image_scores(
             align_corners=False,
         ).squeeze(1)
         attn = torch.softmax(attn.flatten(1), dim=1).view(-1, *mask.shape)
-
-        valid = seg_ids != -1
-        token_mask = (
-            (mask[None, None] == seg_ids[:, :, None, None]) & valid[:, :, None, None]
-        ).any(dim=1)
-
-        # Tokens whose referent is fully outside the (cropped) mask have no
-        # target pixels; the metrics return NaN for them and they are ignored.
-        has_pixels = token_mask.flatten(1).any(dim=1)
-        if not has_pixels.any():
-            continue
-        attn = attn[has_pixels]
-        token_mask = token_mask[has_pixels]
 
         per_token = torch.stack(
             [amr(attn, token_mask), average_precision(attn, token_mask),

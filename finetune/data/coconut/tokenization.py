@@ -4,8 +4,11 @@ import re
 
 from transformers import PreTrainedTokenizer
 
-# Precompile — avoids re.compile on every call to parse_annotated_caption
-_ANNOTATION_RE = re.compile(r"<\s*([\d,\s]+)\s*:\s*([^>]+)>")
+# Precompile — avoids re.compile on every call to parse_annotated_caption.
+# The text class excludes '<' so an unclosed "<3: ..." cannot swallow the next
+# annotation; the stray bracket then stays in the clean text, where the
+# dataset's format filter rejects the caption.
+_ANNOTATION_RE = re.compile(r"<\s*([\d,\s]+)\s*:\s*([^<>]+)>")
 
 
 def parse_annotated_caption(caption: str) -> list[tuple[list[int], str]]:

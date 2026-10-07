@@ -55,6 +55,14 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             "The COCONut collator needs a fast tokenizer: annotation IDs are "
             "assigned to tokens through their character offsets."
         )
+    if tokenizer.padding_side != "left":
+        # The criterion and the alignment metrics pair the LAST gen_len
+        # saliency rows with the labelled positions, which is only right when
+        # the caption is the tail of the sequence.
+        raise ValueError(
+            f"padding_side must be 'left' (got {tokenizer.padding_side!r}); "
+            "the loss/metrics assume the caption ends the sequence."
+        )
 
     def collate_fn(examples: list[dict]) -> dict | None:
         """Collate function for training with annotation-aware tokenization.
@@ -135,14 +143,17 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             )
 
             if tuple(mask.shape) != (image.height, image.width):
-                raise ValueError(
-                    f"Mask shape {tuple(mask.shape)} does not match image size "
-                    f"(H, W) = {(image.height, image.width)}."
+                logger.warning(
+                    "Skipping example: mask shape %s does not match image size "
+                    "(H, W) = %s.",
+                    tuple(mask.shape),
+                    (image.height, image.width),
                 )
+                continue
             left, top, right, bottom = visible_crop_box(
                 image.size, processor.image_processor
             )
-            mask = mask[top:bottom, left:right]
+            mask = mask[top:bottom, left:right].contiguous()
 
             images.append(image)
             texts.append(prompt)
@@ -203,11 +214,25 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
                     "tokenization; cannot align annotations."
                 )
 
-            caption_char0 = prompt.rindex(clean_caption)
+            caption_char0 = prompt.rfind(clean_caption)
+            if caption_char0 < 0:
+                raise ValueError(
+                    "The chat template did not insert the caption verbatim; "
+                    "cannot map character offsets back to the caption."
+                )
             offsets = [
                 (start - caption_char0, end - caption_char0)
                 for start, end in encoding["offset_mapping"][ref_start:]
             ]
+            # Offsets must be real character spans covering the caption;
+            # guards against tokenizer versions that return empty offsets.
+            if any(end <= start for start, end in offsets) or (
+                offsets and offsets[-1][1] < len(clean_caption.rstrip())
+            ):
+                raise ValueError(
+                    "Tokenizer returned empty or incomplete offsets for the "
+                    "caption; cannot assign annotations."
+                )
             cap_ann_ids = align_annotations_to_offsets(offsets, clean_caption, spans)
 
             tokenized_segments.append(cap_ann_ids)

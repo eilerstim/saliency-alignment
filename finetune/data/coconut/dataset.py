@@ -12,6 +12,8 @@ from omegaconf import DictConfig
 from PIL import Image
 from torch.utils.data import Dataset
 
+from finetune.data.coconut.tokenization import parse_annotated_caption
+
 logger = logging.getLogger(__name__)
 
 # COCONut PanCap mixes two annotation styles. We only keep ``<N: text>``
@@ -20,6 +22,10 @@ logger = logging.getLogger(__name__)
 # colon-style brackets that reference id 0 would target the mask's
 # void/background pixels rather than a real segment, and unannotated
 # pure-prose captions contribute nothing to the alignment loss / metric.
+# Captions whose clean text still contains a bracket (an unclosed ``<3: ``,
+# or an id list the parser does not accept such as ``<2-25: ...>``) are
+# rejected too: their annotations cannot be mapped to tokens reliably and
+# the stray markup would otherwise be trained as caption text.
 _NO_COLON_ANNOTATION_RE = re.compile(r"<\s*[\d,\s]+\s*>")
 _COLON_ID_LIST_RE = re.compile(r"<\s*([\d,\s]+)\s*:")
 
@@ -32,7 +38,10 @@ def _has_clean_format(caption: str) -> bool:
         if any(int(d) == 0 for d in re.findall(r"\d+", m.group(1))):
             return False
         has_annotation = True
-    return has_annotation
+    if not has_annotation:
+        return False
+    clean = "".join(text for _, text in parse_annotated_caption(caption))
+    return "<" not in clean and ">" not in clean
 
 
 class COCONutPanCapDataset(Dataset):

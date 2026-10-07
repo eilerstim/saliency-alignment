@@ -15,8 +15,16 @@ def visible_crop_box(
     that are compared against the patch grid must be cropped to the same
     region, otherwise the grid is stretched over pixels the model cannot
     attend to. This mirrors ``get_resize_output_image_size`` and
-    ``center_crop`` from ``transformers.image_transforms`` and maps the crop
-    back to original pixel coordinates.
+    ``center_crop`` from ``transformers.image_transforms`` (the fast
+    processor behaves the same) and maps the crop back to original pixel
+    coordinates.
+
+    Only the resize-then-center-crop family is supported. Processors that
+    tile the image (``image_grid_pinpoints``, e.g. LLaVA-NeXT) see the whole
+    image and are rejected; processors without a center crop (Qwen2-VL,
+    Gemma-3) return the full image. A crop larger than the resized image
+    (padding) does not occur for ``shortest_edge == crop`` and is treated as
+    "nothing cropped".
 
     Args:
         image_size: ``(width, height)`` of the original image (PIL order).
@@ -27,17 +35,25 @@ def visible_crop_box(
         image when the processor does not center-crop.
     """
     width, height = image_size
+    if getattr(image_processor, "image_grid_pinpoints", None):
+        raise NotImplementedError(
+            "Tiled (anyres) image processors see the full image; mask "
+            "cropping is only defined for resize + center-crop processors."
+        )
     if not getattr(image_processor, "do_center_crop", False):
         return 0, 0, width, height
 
     size = getattr(image_processor, "size", None) or {}
-    if getattr(image_processor, "do_resize", True) and "shortest_edge" in size:
+    do_resize = getattr(image_processor, "do_resize", True)
+    if do_resize and "shortest_edge" in size:
         new_short = int(size["shortest_edge"])
         short, long = (width, height) if width <= height else (height, width)
         new_long = int(new_short * long / short)
         new_w, new_h = (
             (new_short, new_long) if width <= height else (new_long, new_short)
         )
+    elif do_resize and "height" in size and "width" in size:
+        new_w, new_h = int(size["width"]), int(size["height"])
     else:
         new_w, new_h = width, height
 
@@ -46,6 +62,8 @@ def visible_crop_box(
     if crop_h >= new_h and crop_w >= new_w:
         return 0, 0, width, height  # nothing is cropped away (padding case)
 
+    # Both the slow and the fast CLIP processors floor the crop offset
+    # (checked against their outputs with coordinate-encoded images).
     top_r = max((new_h - crop_h) // 2, 0)
     left_r = max((new_w - crop_w) // 2, 0)
     bottom_r = min(top_r + crop_h, new_h)

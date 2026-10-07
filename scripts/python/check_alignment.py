@@ -90,6 +90,9 @@ def main(cfg: DictConfig) -> None:
             if not has[t]:
                 continue
             text = processor.tokenizer.decode(tok_ids[t : t + 1])
+            if int(tmask[t].sum()) == 0:
+                print(f"  tok={text!r:<18} referent outside the center crop; skipped")
+                continue
             flag = "" if (per_tok[t] > 1) else "  <-- at/below chance"
             print(
                 f"  tok={text!r:<18} mask_px={int(tmask[t].sum()):>7} "
