@@ -8,9 +8,9 @@ See @README.md for the repository layout and data format.
 ## Where things are
 
 - `PROJECT_DIR` is the clone you work in; every path below is relative to it.
-  On CSCS it lives on scratch, e.g. `$SCRATCH/saliency-alignment-v2`.
-- `data/coco/` COCO images and COCONut masks/captions (symlink from an
-  existing clone instead of downloading again).
+  On CSCS it is `$SCRATCH/saliency-alignment`.
+- `data/coco/` COCO images and COCONut masks/captions, produced by
+  `sbatch scripts/cscs/data.sh` (see the data step below).
 - `models/<RUN_ID>/` HF checkpoints written by training (LoRA runs also get
   `models/<RUN_ID>-merged/`).
 - `outputs/<RUN_ID>/alignment_summary.json` intrinsic metrics from
