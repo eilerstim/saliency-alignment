@@ -51,4 +51,12 @@ srun --environment=saliency_eval bash -c '
         2> >(scrub >&2) | scrub
 '
 
+# lmms-eval catches its own exceptions and exits 0 (e.g. a scoring error after
+# generation), so check that a results file was actually written; otherwise
+# fail the job so the launchers' skip logic and the accounting see it.
+if ! find "${PROJECT_DIR}/results/lm-eval/${MODEL_NAME}" -name '*results*.json' 2>/dev/null | grep -q .; then
+    echo "LM-eval of ${MODEL_NAME} finished without writing a results file; see the log above" >&2
+    exit 1
+fi
+
 echo "Finished LM-eval evaluation at $(date)"

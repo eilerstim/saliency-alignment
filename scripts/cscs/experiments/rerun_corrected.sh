@@ -42,6 +42,12 @@ MODEL_SIZE=7b
 BASE_MODEL="llava-hf/llava-1.5-${MODEL_SIZE}-hf"
 REF_MODELS="${REF_MODELS:-teilers/llava-1.5-7b-saliency-kl0.5-st2400}"
 
+# lmms-eval results exist when a results JSON was written under
+# results/lm-eval/<name>/ (lmms-eval nests it in a model/timestamp directory).
+has_lm_eval_results() {
+    find "${PROJECT_DIR}/results/lm-eval/$1" -name '*results*.json' 2>/dev/null | grep -q .
+}
+
 # Evaluation jobs for a Hugging Face model id (no training). The align_eval
 # output lands in outputs/<id with / replaced by __>/.
 eval_hub_model() {
@@ -54,7 +60,7 @@ eval_hub_model() {
         echo "[align-eval] ${model}"
     fi
     if [ "${2:-}" = "with-downstream" ]; then
-        if [ -d "${PROJECT_DIR}/results/lm-eval/${model}" ]; then
+        if has_lm_eval_results "${model}"; then
             echo "[skip lm-eval] ${model}"
         else
             sbatch scripts/cscs/arr_eval.sh "$model" "true" >/dev/null
@@ -88,7 +94,7 @@ submit() {
     else
         sbatch ${dep} scripts/cscs/arr_align_eval.sh "$run_id" "false" >/dev/null
     fi
-    if [ -d "${PROJECT_DIR}/results/lm-eval/${run_id}" ]; then
+    if has_lm_eval_results "${run_id}"; then
         echo "[skip lm-eval] ${run_id}"
     else
         sbatch ${dep} scripts/cscs/arr_eval.sh "$run_id" >/dev/null
