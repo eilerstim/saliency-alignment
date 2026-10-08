@@ -140,7 +140,23 @@ before the previous check passes.
    re-runs lm-eval with `--log_samples` for the base model and the eight
    length-series runs into `results/lm-eval/<run>_samples/`, leaving the
    original results untouched. Both stages are idempotent.
-11. **Final report.** When every job has finished or failed for good, run
+11. **Post-sweep analyses** (after seeds and samples are in; all inside the
+   container via `srun --account=aa013 --environment=saliency`, a GPU
+   allocation is fine even for CPU work):
+   - Parameter drift (Appendix E): needs ~60 GB RAM per checkpoint pair, so
+     request `--mem=200G --cpus-per-task=16 --time=03:00:00`.
+     `srun ... .venv/bin/python scripts/python/compare_drift.py --base llava-hf/llava-1.5-7b-hf models/llava-1.5-7b_kl_w0.5_lm_only_lr2e-5_st800_seed42 models/llava-1.5-7b_kl_w0.5_lm_proj_lr2e-5_st800_seed42 models/llava-1.5-7b_kl_w0.5_proj_only_lr2e-5_st800_seed42 --baseline llava-1.5-7b_kl_w0.5_lm_only_lr2e-5_st800_seed42 --per-layer --per-head --save-reports 2>&1 | tee results/drift_components.txt`
+     and the same with `models/llava-1.5-7b_kl_w0.5_lm_only_lr2e-5_st800_seed42 models/llava-1.5-7b_kl_w0.5_lm_only_lr2e-4_st800_seed42_lora_r16-merged`
+     into `results/drift_lora.txt`.
+   - Figure 3 (saliency grid), one GPU:
+     `srun ... --gpus=1 --time=01:00:00 .venv/bin/python scripts/python/viz.py scripts/python/prompts_appendix.csv --output_dir figs_v2 --models base=llava-hf/llava-1.5-7b-hf aligned=models/llava-1.5-7b_kl_w0.5_lm_only_lr2e-5_st2400_seed42`
+     then `srun ... .venv/bin/python scripts/python/make_saliency_grid.py scripts/python/prompts_appendix.csv --maps_dir figs_v2 --out figures/saliency_grid_v2.pdf`.
+     The maps are now drawn on the center crop the model sees.
+   - Figure 2 (metrics over training length):
+     `srun ... .venv/bin/python scripts/python/plot_metrics_over_time.py results/summary.csv --out figures/metrics_over_time_v2.pdf`.
+   Leave the generated PDFs and text files in place (do not commit them)
+   and list their paths in the final message.
+12. **Final report.** When every job has finished or failed for good, run
    `python scripts/python/aggregate_results.py --out results/summary.csv`
    and `python scripts/python/make_report.py results/summary.csv > results/report.md`,
    then give the user the full content of `results/report.md` verbatim,

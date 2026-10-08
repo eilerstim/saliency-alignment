@@ -3,8 +3,10 @@ import csv
 import hashlib
 import os
 import re
+import sys
 import time
 from io import BytesIO
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
@@ -16,8 +18,15 @@ from transformers import AutoProcessor, LlavaForConditionalGeneration
 from vl_saliency import Saliency
 from vl_saliency.select import regex
 
+# Run as a plain script, so sys.path[0] is scripts/python/; the project root
+# holds the finetune package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from finetune.data.utils import visible_crop_box  # noqa: E402
+
 parser = argparse.ArgumentParser()
-parser.add_argument("csv_file", help="CSV file with columns: word, prompt, response, image_url")
+parser.add_argument(
+    "csv_file", help="CSV file with columns: word, prompt, response, image_url"
+)
 parser.add_argument("--output_dir", default="figs", help="Directory to save figures")
 parser.add_argument(
     "--models",
@@ -28,16 +37,20 @@ parser.add_argument(
 )
 parser.add_argument("--dpi", type=int, default=200, help="Resolution of the saved maps")
 parser.add_argument(
-    "--dtype", default="float32", choices=["float32", "bfloat16", "float16"],
+    "--dtype",
+    default="float32",
+    choices=["float32", "bfloat16", "float16"],
     help="Model dtype (float32 matches the paper; bfloat16 halves memory for CPU runs)",
 )
 parser.add_argument(
-    "--offload_dir", default=None,
+    "--offload_dir",
+    default=None,
     help="Enable accelerate disk offload into this folder for machines whose RAM "
-         "cannot hold the whole model (CPU-only inference).",
+    "cannot hold the whole model (CPU-only inference).",
 )
 parser.add_argument(
-    "--max_cpu_mem", default="10GiB",
+    "--max_cpu_mem",
+    default="10GiB",
     help="RAM budget for the weights when --offload_dir is set (rest is streamed from disk)",
 )
 args = parser.parse_args()
@@ -149,7 +162,9 @@ for model_type, model_path in models_to_run:
         prompt_text = processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        inputs = processor(images=image, text=prompt_text, return_tensors="pt").to(device)
+        inputs = processor(images=image, text=prompt_text, return_tensors="pt").to(
+            device
+        )
 
         # The eager backend reads attention weights through hooks; no gradients
         # are needed, and skipping autograd keeps activation memory small.
@@ -160,18 +175,37 @@ for model_type, model_path in models_to_run:
             image=image, processor=processor, input_ids=inputs.input_ids
         )
 
+        # The image processor center-crops non-square images, so the 24x24
+        # patch grid covers only the central square. Overlay the map on that
+        # crop; drawing it over the full image would stretch it over margins
+        # the model never sees.
+        left, top, right, bottom = visible_crop_box(
+            image.size, processor.image_processor
+        )
+        visible = image.crop((left, top, right, bottom))
+
         try:
-            fig = sal.plot(regex(word), alpha=0.8, cmap="inferno", title=f"Saliency Map for `{word}` ({model_type})")
+            fig = sal.plot(
+                regex(word),
+                image=visible,
+                alpha=0.8,
+                cmap="inferno",
+                title=f"Saliency Map for `{word}` ({model_type})",
+            )
             stem = f"{model_type}_{word}_{url_slug(image_url)}"
             map_path = os.path.join(args.output_dir, f"map_{stem}.png")
             clean_path = os.path.join(args.output_dir, f"clean_{stem}.png")
             fig.savefig(map_path, dpi=args.dpi)
             save_clean_map(fig, clean_path, args.dpi)
-            manifest_writer.writerow([row_idx, model_type, word, image_url, map_path, clean_path])
+            manifest_writer.writerow(
+                [row_idx, model_type, word, image_url, map_path, clean_path]
+            )
             manifest.flush()
             print(f"  Saved saliency map for '{word}' ({model_type})")
         except Exception as e:
-            print(f"  Skipping word '{word}' ({model_type}) — could not find it in the tokens.")
+            print(
+                f"  Skipping word '{word}' ({model_type}) — could not find it in the tokens."
+            )
             print(f"  Available tokens: {sal.decoded_gen_tokens}")
             print(f"  Error: {e}")
 
