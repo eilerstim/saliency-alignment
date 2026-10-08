@@ -14,6 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from vl_saliency import Saliency
 
+from .checkpoint import save_model
 from .lightning import FineTuner
 from .model import build_model
 from .strategy import load_lt_state, load_strategy
@@ -70,7 +71,7 @@ def finetune(cfg: DictConfig):
     # Save model and processor
     if rank == 0:
         save_dir = f"{cfg.checkpoint_dir}/{cfg.run_id}"
-        model.save_pretrained(save_dir, state_dict=state)
+        save_model(model, state, save_dir)
         processor.save_pretrained(save_dir)
 
         # Fix tokenizer_class for vLLM compatibility (LLaMA-tokenizer models

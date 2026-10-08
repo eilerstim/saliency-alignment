@@ -27,6 +27,7 @@
 #          signal before the rest is trained at lambda 0.5. Selection rule:
 #          localization (AMR/AP/NSS) against validation loss; downstream
 #          columns are reported but not used.
+#   lora   the LoRA rank sweep alone (a subset of `full`; see the case below).
 #   full   every remaining run: length series, lambda=0 controls (now also
 #          duration-matched at 800 and 2400 steps), lambda sweep, component
 #          ablation, LoRA rank sweep. Idempotent: finished runs are skipped.
@@ -129,6 +130,15 @@ lambda)
             "$LM_ONLY optim.lr=2e-5 trainer.max_steps=200 seed=${SEED}"
     done
     ;;
+lora)
+    # LoRA rank sweep alone (same runs as in `full`), for resubmitting it
+    # while other `full` trainings are still running: `full` would submit
+    # those again because their checkpoints do not exist yet.
+    for r in 4 16 128; do
+        submit "$(run_id kl 0.5 lm_only 2e-4 800 "_lora_r${r}")" kl 0.5 \
+            "lora.enabled=true lora.r=${r} lora.lora_alpha=$(( 2 * r )) optim.lr=2e-4 trainer.max_steps=800 seed=${SEED}"
+    done
+    ;;
 full)
     # Base model: intrinsic metrics (skipped if the pilot did them) + downstream
     eval_hub_model "$BASE_MODEL" with-downstream
@@ -159,7 +169,7 @@ full)
     done
     ;;
 *)
-    echo "Unknown STAGE='${STAGE}' (expected pilot, lambda, or full)" >&2
+    echo "Unknown STAGE='${STAGE}' (expected pilot, lambda, lora, or full)" >&2
     exit 1
     ;;
 esac
