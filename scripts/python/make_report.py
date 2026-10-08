@@ -203,6 +203,18 @@ def downstream(row: dict) -> list[str | None]:
     return out
 
 
+def label_of(row: dict, k: str | None) -> str:
+    """Row label: the paper's name for the configuration, with the seed appended
+    for repeats of a configuration (seed 42 is the paper's seed)."""
+    label = PAPER.get(k, {}).get("label", row["run_id"]) if k else row["run_id"]
+    if row["run_id"] in HUB_REFERENCE:
+        label = f"published 2400-st checkpoint, corrected metric ({label})"
+    seed = row.get("seed")
+    if seed and seed != "42":
+        label = f"{label}, seed {seed}"
+    return label
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -234,9 +246,7 @@ def main() -> int:
         k = key_of(r)
         ref = PAPER.get(k, {}).get("intr") if k else None
         ref = ref or (None, None, None, None)
-        label = PAPER.get(k, {}).get("label", r["run_id"]) if k else r["run_id"]
-        if r["run_id"] in HUB_REFERENCE:
-            label = f"published 2400-st checkpoint, corrected metric ({label})"
+        label = label_of(r, k)
         cells = [
             f"{fnum(r.get('AMR_mean'))} ({fnum(ref[0])})",
             f"{fnum(r.get('AP_mean'))} ({fnum(ref[1])})",
@@ -256,7 +266,7 @@ def main() -> int:
         k = key_of(r)
         ref = PAPER.get(k, {}).get("down") if k else None
         ref = list(ref or []) + [None] * (len(DOWN_COLS) - len(ref or []))
-        label = PAPER.get(k, {}).get("label", r["run_id"]) if k else r["run_id"]
+        label = label_of(r, k)
         cells = [f"{pct(v)} ({fnum(p, 1)})" for v, p in zip(vals, ref, strict=True)]
         print(f"| {label} | " + " | ".join(cells) + " |")
 
