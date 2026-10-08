@@ -31,6 +31,11 @@
 #   full   every remaining run: length series, lambda=0 controls (now also
 #          duration-matched at 800 and 2400 steps), lambda sweep, component
 #          ablation, LoRA rank sweep. Idempotent: finished runs are skipped.
+#   seeds  two more seeds (43, 44) of the 800-step aligned/control pair, to
+#          put a seed standard deviation on the small downstream differences.
+#   samples per-sample lm-eval outputs (--log_samples, results dir suffix
+#          "_samples") for the base model and the eight length-series runs,
+#          for paired tests between aligned and control at matched length.
 #
 # The base model's downstream (lmms-eval) numbers do not depend on the
 # collator; `full` re-runs them anyway so the final report is self-contained.
@@ -168,8 +173,31 @@ full)
             "lora.enabled=true lora.r=${r} lora.lora_alpha=$(( 2 * r )) optim.lr=2e-4 trainer.max_steps=800 seed=${SEED}"
     done
     ;;
+seeds)
+    for SEED in 43 44; do
+        submit "$(run_id kl 0.5 lm_only 2e-5 800)" kl 0.5 \
+            "$LM_ONLY optim.lr=2e-5 trainer.max_steps=800 seed=${SEED}"
+        submit "$(run_id default 0 lm_only 2e-5 800)" default 0 \
+            "$LM_ONLY optim.lr=2e-5 trainer.max_steps=800 seed=${SEED}"
+    done
+    ;;
+samples)
+    sample_eval() {  # sample_eval MODEL [true]
+        if has_lm_eval_results "${1}_samples"; then
+            echo "[skip samples] $1"
+        else
+            OUT_SUFFIX=_samples sbatch scripts/cscs/arr_eval.sh "$1" "${2:-false}" >/dev/null
+            echo "[samples] $1"
+        fi
+    }
+    sample_eval "$BASE_MODEL" true
+    for st in 200 800 1600 2400; do
+        sample_eval "$(run_id kl 0.5 lm_only 2e-5 "$st")"
+        sample_eval "$(run_id default 0 lm_only 2e-5 "$st")"
+    done
+    ;;
 *)
-    echo "Unknown STAGE='${STAGE}' (expected pilot, lambda, lora, or full)" >&2
+    echo "Unknown STAGE='${STAGE}' (expected pilot, lambda, lora, full, seeds, or samples)" >&2
     exit 1
     ;;
 esac

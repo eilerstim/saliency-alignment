@@ -133,7 +133,14 @@ before the previous check passes.
    model's downstream suite. Finished runs are skipped, so resubmit the
    same command after failures. Expect a day or more of wall time; check
    back periodically rather than polling every minute.
-10. **Final report.** When every job has finished or failed for good, run
+10. **Seeds and per-sample outputs** (after the full sweep, on the user's
+   go): `STAGE=seeds sbatch scripts/cscs/experiments/rerun_corrected.sh`
+   trains seeds 43 and 44 of the 800-step aligned and control runs with
+   both evaluations; `STAGE=samples sbatch scripts/cscs/experiments/rerun_corrected.sh`
+   re-runs lm-eval with `--log_samples` for the base model and the eight
+   length-series runs into `results/lm-eval/<run>_samples/`, leaving the
+   original results untouched. Both stages are idempotent.
+11. **Final report.** When every job has finished or failed for good, run
    `python scripts/python/aggregate_results.py --out results/summary.csv`
    and `python scripts/python/make_report.py results/summary.csv > results/report.md`,
    then give the user the full content of `results/report.md` verbatim,

@@ -35,6 +35,11 @@ echo "MODEL_PATH=${MODEL_PATH}"
 TOKENIZER="${TOKENIZER:-llava-hf/llava-1.5-7b-hf}"
 MODEL_ARGS="model=${MODEL_PATH},tokenizer=${TOKENIZER},tensor_parallel_size=1,dtype=bfloat16,trust_remote_code=True"
 
+# OUT_SUFFIX lets a re-evaluation (e.g. with per-sample logs) land next to,
+# not on top of, an existing result directory. --log_samples writes every
+# model answer so paired comparisons between runs are possible afterwards.
+OUT_DIR="${PROJECT_DIR}/results/lm-eval/${MODEL_NAME}${OUT_SUFFIX:-}"
+
 srun --environment=saliency_eval bash -c '
     set -euo pipefail
     uv pip install --force-reinstall numpy scipy --system
@@ -45,7 +50,8 @@ srun --environment=saliency_eval bash -c '
     python3 -m lmms_eval \
         --model vllm \
         --model_args "'"${MODEL_ARGS}"'" \
-        --output_path "'"${PROJECT_DIR}"'/results/lm-eval/'"${MODEL_NAME}"'" \
+        --output_path "'"${OUT_DIR}"'" \
+        --log_samples \
         --include_path "'"${PROJECT_DIR}"'/eval/lmms_eval/tasks" \
         --tasks o3,vlms_are_biased,cv_bench_2d,cv_bench_3d,mmvp,mmstar,pope,countbench \
         2> >(scrub >&2) | scrub
@@ -54,7 +60,7 @@ srun --environment=saliency_eval bash -c '
 # lmms-eval catches its own exceptions and exits 0 (e.g. a scoring error after
 # generation), so check that a results file was actually written; otherwise
 # fail the job so the launchers' skip logic and the accounting see it.
-if ! find "${PROJECT_DIR}/results/lm-eval/${MODEL_NAME}" -name '*results*.json' 2>/dev/null | grep -q .; then
+if ! find "${OUT_DIR}" -name '*results*.json' 2>/dev/null | grep -q .; then
     echo "LM-eval of ${MODEL_NAME} finished without writing a results file; see the log above" >&2
     exit 1
 fi
