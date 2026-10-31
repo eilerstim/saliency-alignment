@@ -53,8 +53,12 @@ class Criterion(ABC):
             gen_ids = labels[b] != -100
             seg_ids = segment_ids[b][gen_ids]  # (gen_len, max_segments)
 
+            # Saliency rows are per query position and the supervised tokens are
+            # the trailing ones. The token at position p is predicted by the
+            # query at p - 1, so shift back by one row (dropping the last row,
+            # which predicts past the sequence).
             gen_len = seg_ids.shape[0]
-            attn = attn[-gen_len:]
+            attn = attn[-gen_len - 1 : -1]
 
             # Filter tokens with segments only
             has_segments = (seg_ids != -1).any(dim=1)
@@ -86,6 +90,14 @@ class Criterion(ABC):
 
             # merge annotations per token -> (gen_len, H, W)
             token_mask = seg_mask.any(dim=1)
+
+            # Drop tokens whose referent lies entirely outside the (cropped)
+            # mask: an empty target distribution carries no supervision.
+            has_pixels = token_mask.flatten(1).any(dim=1)
+            if not has_pixels.any():
+                continue
+            attn = attn[has_pixels]
+            token_mask = token_mask[has_pixels]
 
             loss = self.compute_loss(attn, token_mask)
             losses.append(loss)

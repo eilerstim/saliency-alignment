@@ -33,17 +33,23 @@ echo "MODEL_PATH=${MODEL_PATH}"
 # tokenizer by default; for other architectures set TOKENIZER to the checkpoint's
 # own tokenizer (e.g. TOKENIZER="${MODEL_PATH}").
 TOKENIZER="${TOKENIZER:-llava-hf/llava-1.5-7b-hf}"
+# Benchmarks to run; override with TASKS (comma-separated lmms-eval task names)
+TASKS="${TASKS:-o3,vlms_are_biased,cv_bench_2d,cv_bench_3d,mmvp,mmstar,pope,countbench}"
 MODEL_ARGS="model=${MODEL_PATH},tokenizer=${TOKENIZER},tensor_parallel_size=1,dtype=bfloat16,trust_remote_code=True"
 
 srun --environment=saliency_eval bash -c '
     set -euo pipefail
     uv pip install --force-reinstall numpy scipy --system
+    # The task code in eval/ (MMStar, MMVP) imports a helper that the lmms-eval
+    # installed in the image predates; without it scoring fails after generation.
+    cp "'"${PROJECT_DIR}"'/eval/lmms_eval/tasks/_task_utils/mcq_extract.py" \
+        "$(python3 -c "import importlib.util as u; print(u.find_spec(\"lmms_eval\").submodule_search_locations[0])")/tasks/_task_utils/"
     python3 -m lmms_eval \
         --model vllm \
         --model_args "'"${MODEL_ARGS}"'" \
         --output_path "'"${PROJECT_DIR}"'/results/lm-eval/'"${MODEL_NAME}"'" \
         --include_path "'"${PROJECT_DIR}"'/eval/lmms_eval/tasks" \
-        --tasks o3,vlms_are_biased,cv_bench_2d,cv_bench_3d,mmvp,mmstar,pope,countbench
+        --tasks "'"${TASKS}"'"
 '
 
 echo "Finished LM-eval evaluation at $(date)"

@@ -5,39 +5,72 @@ import torch
 from transformers import ProcessorMixin
 
 from finetune.data.coconut.tokenization import (
+    annotation_char_spans,
+    annotations_for_offsets,
     parse_annotated_caption,
-    tokenize_from_parsed,
 )
-from finetune.data.utils import find_sequence
+from finetune.data.utils import crop_to_processor_view, find_sequence
 
 logger = logging.getLogger(__name__)
 
 
-def _compute_suffix_tokens(processor: ProcessorMixin) -> list[int]:
-    """Compute the assistant-header token IDs once.
+def _caption_annotations(
+    processor: ProcessorMixin,
+    text: str,
+    parsed_segments: list[tuple[list[int], str]],
+    input_ids: torch.Tensor,
+) -> tuple[int, list[list[int]]]:
+    """Locate the caption in ``input_ids`` and annotate its tokens.
 
-    Derives the token sequence that separates the user prompt from the
-    assistant response by diffing the chat template with and without
-    ``add_generation_prompt=True``.
+    Re-tokenizes the full chat-formatted ``text`` with character offsets so
+    that tokens are split exactly as in the model input. The caption starts at
+    the first token reaching into the caption's characters; this does not rely
+    on an assistant header, which some templates (e.g. Mistral) leave empty.
+    The caption and everything after it lie past the image placeholder that
+    the processor expands, so that token sequence must appear verbatim in
+    ``input_ids``.
+
+    Returns:
+        Index of the first caption token in ``input_ids`` and the annotation
+        IDs for every token from there to the end of the prompt.
     """
-    user_messages = [
-        {"role": "user", "content": [{"type": "text", "text": "X"}]},
+    clean_caption = "".join(t for _, t in parsed_segments)
+    stripped = clean_caption.strip()
+    caption_char_start = text.rfind(stripped)
+    if caption_char_start == -1:
+        raise ValueError("Could not locate the caption in the chat-formatted prompt.")
+    # The chat template may trim the caption; shift spans by the trimmed lead
+    char_offset = caption_char_start - (
+        len(clean_caption) - len(clean_caption.lstrip())
+    )
+
+    encoding = processor.tokenizer(
+        text, add_special_tokens=False, return_offsets_mapping=True
+    )
+    offsets = [tuple(o) for o in encoding["offset_mapping"]]
+    text_start = next(
+        i for i, (_, end) in enumerate(offsets) if end > caption_char_start
+    )
+
+    caption_ids = encoding["input_ids"][text_start:]
+    input_start = find_sequence(input_ids, caption_ids)
+    if input_start == -1:
+        raise ValueError(
+            "Caption tokens differ between the processor and tokenizer; "
+            "segment IDs cannot be aligned."
+        )
+
+    spans = [
+        (start + char_offset, end + char_offset, ids)
+        for start, end, ids in annotation_char_spans(parsed_segments)
     ]
-    without_gen = processor.apply_chat_template(
-        user_messages, tokenize=False, add_generation_prompt=False
-    )
-    with_gen = processor.apply_chat_template(
-        user_messages, tokenize=False, add_generation_prompt=True
-    )
-    assistant_header = with_gen[len(without_gen) :]
-    return processor.tokenizer.encode(assistant_header, add_special_tokens=False)
+    return input_start, annotations_for_offsets(offsets[text_start:], spans)
 
 
 def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | None]:
     """Create a training collate function with precomputed processor state.
 
-    Returns a closure that captures ``processor`` and the assistant-header
-    token IDs so they are computed once rather than every batch.
+    Returns a closure that captures ``processor``.
 
     Args:
         processor: Vision-language model processor.
@@ -45,7 +78,6 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
     Returns:
         Collate function compatible with ``torch.utils.data.DataLoader``.
     """
-    suffix_tokens = _compute_suffix_tokens(processor)
 
     def collate_fn(examples: list[dict]) -> dict | None:
         """Collate function for training with annotation-aware tokenization.
@@ -56,9 +88,9 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         computation.
 
         Caption Alignment:
-            The function identifies where the caption starts in the tokenized
-            sequence by searching for the precomputed assistant-header tokens.
-            The caption tokens begin immediately after the header.
+            The caption starts at the first token covering the caption's
+            characters in the chat-formatted prompt, found via the tokenizer's
+            offset mapping and located in ``input_ids`` by its token sequence.
 
         Label Masking:
             Labels are set to -100 (ignored in loss computation) for:
@@ -68,9 +100,13 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             Only the caption tokens (assistant's response) have valid labels.
 
         Segment ID Alignment:
-            Segment IDs from COCONut annotations are aligned token-by-token with
-            the caption portion of ``input_ids``. Each token can have multiple
-            segment IDs (e.g., when a word refers to multiple objects).
+            Each prompt is re-tokenized as a whole with character offsets, and a
+            caption token receives the segment IDs of every annotated span its
+            characters overlap. Tokenizing spans separately would split words
+            and spaces differently from the model's input and shift the
+            segments onto neighbouring tokens. The re-tokenized caption tokens
+            must equal the caption portion of ``input_ids``. Each token can have
+            multiple segment IDs (e.g., when a word refers to multiple objects).
 
         Args:
             examples: List of dicts with keys image, caption, mask, segments_info.
@@ -115,7 +151,10 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
             images.append(image)
             texts.append(prompt)
             parsed_segments_list.append(parsed_segments)
-            panoptic_masks.append(mask)
+            # Same region as the image the vision tower sees (center crop)
+            panoptic_masks.append(
+                crop_to_processor_view(mask, getattr(processor, "image_processor", None))
+            )
 
         if not images:
             return None
@@ -137,14 +176,18 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         labels = input_ids.clone()
         labels[labels == processor.tokenizer.pad_token_id] = -100
 
-        # First pass: tokenize annotations (reusing parsed segments) and find max_segments
+        # First pass: assign annotations to the caption tokens of each prompt
+        caption_starts = []
         tokenized_segments = []
         max_segments = 1
 
-        for parsed in parsed_segments_list:
-            _, cap_ann_ids = tokenize_from_parsed(
-                parsed, processor.tokenizer, add_special_tokens=False
+        for i, (text, parsed) in enumerate(
+            zip(texts, parsed_segments_list, strict=True)
+        ):
+            caption_start, cap_ann_ids = _caption_annotations(
+                processor, text, parsed, input_ids[i]
             )
+            caption_starts.append(caption_start)
             tokenized_segments.append(cap_ann_ids)
             for ann_ids in cap_ann_ids:
                 if len(ann_ids) > max_segments:
@@ -158,17 +201,13 @@ def make_collate_fn(processor: ProcessorMixin) -> Callable[[list[dict]], dict | 
         # Collect indices and values for vectorized assignment
         batch_idx, token_idx, seg_idx, values = [], [], [], []
 
-        for i, cap_ann_ids in enumerate(tokenized_segments):
-            caption_start = find_sequence(input_ids[i], suffix_tokens) + len(
-                suffix_tokens
-            )
-
+        for i, (caption_start, cap_ann_ids) in enumerate(
+            zip(caption_starts, tokenized_segments, strict=True)
+        ):
             # Mask prompt tokens
             labels[i, :caption_start] = -100
 
-            caption_len = min(len(cap_ann_ids), seq_len - caption_start)
-
-            for j, ann_ids in enumerate(cap_ann_ids[:caption_len]):
+            for j, ann_ids in enumerate(cap_ann_ids):
                 for k, ann_id in enumerate(ann_ids):
                     batch_idx.append(i)
                     token_idx.append(caption_start + j)

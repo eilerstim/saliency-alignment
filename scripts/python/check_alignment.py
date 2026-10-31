@@ -1,15 +1,15 @@
 """One-batch diagnostic: do supervised tokens' saliency land on their masks?
 
 Reproduces the exact token<->saliency pairing that finetune/criterion/base.py
-and align_eval/metrics.py rely on (attn[-gen_len:] paired with the labels != -100
-tokens) on a single real batch, and prints, per supervised token: the decoded
+and align_eval/metrics.py rely on (attn[-gen_len - 1:-1], i.e. the row of the query
+at p - 1 that predicts each labels != -100 token at p) on a single real batch, and prints, per supervised token: the decoded
 text, its mask size, and the chance-normalised AMR (reusing align_eval.metrics).
 
 Interpretation:
   * Aligned   -> object/noun tokens show AMR > 1 and the decoded text names what
                  the mask covers (e.g. "dog" with AMR 3.x).
   * Misaligned -> AMR ~= 1 (chance) across tokens, or sensible-looking tokens
-                 paired with the wrong regions => the attn[-gen_len:] slice /
+                 paired with the wrong regions => the attn[-gen_len - 1:-1] slice /
                  padding side is off and the loss is training the wrong tokens.
 
 Run on 1 GPU in the saliency env (loads the base model by default; pass
@@ -67,7 +67,7 @@ def main(cfg: DictConfig) -> None:
         tok_ids = batch["input_ids"][b][gen]
         gen_len = seg_ids.shape[0]
         print(f"\n=== image {b}: {attn.shape[0]} attn rows, {gen_len} supervised tokens ===")
-        attn = attn[-gen_len:]  # the exact slice criterion/base.py uses
+        attn = attn[-gen_len - 1 : -1]  # the exact slice criterion/base.py uses
 
         has = (seg_ids != -1).any(dim=1)
         if not has.any():
