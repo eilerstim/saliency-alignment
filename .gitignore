@@ -47,3 +47,5 @@ figs/
 
 # Results
 results/
+# Claude Code personal settings (may hold local env/secrets)
+.claude/settings.local.json

@@ -19,6 +19,13 @@ Run on 1 GPU in the saliency env (loads the base model by default; pass
 """
 
 import logging
+import sys
+from pathlib import Path
+
+# Run as a plain script, so sys.path[0] is scripts/python/; the project root
+# must be added explicitly for the top-level ``finetune`` and ``align_eval``
+# packages (``python -m finetune`` gets it from the working directory).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import hydra
 import torch
@@ -90,6 +97,9 @@ def main(cfg: DictConfig) -> None:
             if not has[t]:
                 continue
             text = processor.tokenizer.decode(tok_ids[t : t + 1])
+            if int(tmask[t].sum()) == 0:
+                print(f"  tok={text!r:<18} referent outside the center crop; skipped")
+                continue
             flag = "" if (per_tok[t] > 1) else "  <-- at/below chance"
             print(
                 f"  tok={text!r:<18} mask_px={int(tmask[t].sum()):>7} "
