@@ -13,6 +13,9 @@
 # RUN_IDs cannot collide with the original checkpoints, which arr_train.sh
 # would otherwise skip as already trained.
 #
+# "Paper" in this file means the original submission, whose numbers predate
+# the corrected pipeline; the camera-ready version reports the corrected ones.
+#
 # Stages (STAGE env var):
 #   pilot  (a) corrected intrinsic metrics for the base model and for the
 #              paper's published 2,400-step checkpoint on Hugging Face

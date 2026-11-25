@@ -9,7 +9,7 @@
 #   2. Loss-weight sensitivity (Table 3): lambda 0.05, 0.1, 0.25, 1, 5 at
 #      200 steps (0 and 0.5 come from reproduce_lm_only.sh). Downstream only
 #      CountBench and CV-2D, the two benchmarks the table reports.
-#   3. LoRA rank sweep (Table 5): r 4, 16, 128 (alpha 2r), lr 2e-4, 800 steps.
+#   3. LoRA rank sweep (Table 8): r 4, 16, 128 (alpha 2r), lr 2e-4, 800 steps.
 #   4. Seed variation (Appendix D): lambda 0.5 and 0, 800 steps, seeds 43, 44.
 #   5. Parameter drift (Appendix E) of the 800-step checkpoints, CPU only,
 #      once the runs above have trained. DRIFT_AFTER (colon-separated job ids)

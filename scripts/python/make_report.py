@@ -5,6 +5,9 @@ a Markdown report: one table of intrinsic localization + validation loss and
 one table of downstream benchmarks, each with the paper's value (old pipeline)
 beside the corrected value. Stdlib only.
 
+"The paper" here is the original submission; the camera-ready version reports
+the corrected numbers, so the reference values below differ from it.
+
     python scripts/python/aggregate_results.py --out results/summary.csv
     python scripts/python/make_report.py results/summary.csv > results/report.md
 """

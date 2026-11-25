@@ -4,8 +4,8 @@ This repository fine-tunes Vision-Language Models (VLMs) with a **Saliency Align
 
 The headline findings the code reproduces:
 
-1. **Attention localization is directly supervisable.** Training LLaVA-1.5-7B with the alignment loss improves chance-normalized attention-mask recall (AMR) from 1.25 to 8.44 (6.8x) with a monotone dose–response in training length, while validation cross-entropy also improves.
-2. **Localization gains do not transfer downstream.** Across a suite of grounding-sensitive benchmarks (counting, spatial reasoning, hallucination), aligned models are statistically indistinguishable from a matched lambda=0 control.
+1. **Attention localization is directly supervisable.** Training LLaVA-1.5-7B with the alignment loss raises the chance-normalized Attention Mass Ratio (AMR) from 1.52 for the base model to 15.2 after 800 steps and 17.8 after 2,400 steps (roughly 12x), with a monotone dose–response in training length. Held-out cross-entropy improves with training for both the aligned model and the lambda=0 control; the control stays slightly better at matched training length (1.179 vs. 1.208 at 800 steps).
+2. **Localization gains do not transfer downstream.** Across a suite of grounding-sensitive benchmarks (counting, spatial reasoning, hallucination), aligned models show no consistent downstream gains over a matched lambda=0 control. Paired comparisons at 800 steps find no statistically significant differences in accuracy; the only significant difference is a lower bias rate on VLMs-are-Biased, which also appears in a wrong-target control.
 3. **The change is compactly encoded.** It is carried by the language model rather than the projector, concentrated in a stable set of attention heads, and reachable through rank-4 LoRA adapters.
 
 ## Installation
@@ -62,11 +62,13 @@ finetune/               # Training package (Lightning + FSDP)
 ├── data/               # COCONut-PanCap download + per-token segment supervision
 ├── model.py            # Model/processor construction, freezing, LoRA, eager attention
 └── finetune.py         # Entry point (python -m finetune)
+align_eval/             # Intrinsic localization metrics (AMR, AP, NSS) and the counting analysis
 configs/                # Hydra configs (model/, loss/, data/, optim/, trainer, lora, ...)
 scripts/
 ├── cscs/               # SLURM pipeline: arr_train.sh, arr_align_eval.sh, arr_eval.sh, arr_setup.sh
 │   └── experiments/    # Paper experiment launchers (see below)
-└── python/             # Analysis: aggregate_results.py, compare_drift.py, viz.py
+└── python/             # Analysis and figures: aggregate_results.py, compare_drift.py, viz.py, ...
+tests/                  # Unit tests: collator alignment, mask cropping, token/attention-row pairing
 eval/lmms_eval/tasks/   # Custom lmms-eval task definitions (e.g. VLMs-are-Biased)
 ```
 
@@ -74,28 +76,57 @@ eval/lmms_eval/tasks/   # Custom lmms-eval task definitions (e.g. VLMs-are-Biase
 
 Each launcher in `scripts/cscs/experiments/` submits training plus both evaluations (attention alignment and downstream) as dependent SLURM jobs. Runs are identified by a deterministic `RUN_ID`, so launchers are idempotent and can be resubmitted after failures.
 
-| Launcher | Paper section | What it runs |
-|---|---|---|
-| `sweep_lambda.sh` | Objective appendix | Loss-weight sweep (lambda knee at 0.5) |
-| `sweep_lr_length.sh` | Results (dose–response) | Training length 200–2400 steps, plus lambda=0 controls and LR grid |
-| `run_mse.sh` | Objective appendix | MSE (`alignment`) variant of the loss |
-| `sweep_lora.sh` | Analysis (locus) | LoRA ranks 4/16/128 vs. full fine-tuning |
-| `sweep_models.sh` | Cross-architecture | LLaVA-1.5-13B, Qwen2.5-VL-7B, Gemma-3-4B, each with a lambda=0 control |
+Section, figure, table and appendix numbers below refer to the camera-ready version of the paper.
 
-Component ablations (`lm_only`, `proj_only`, `lm_proj`) are direct `arr_train.sh` invocations with the corresponding freeze overrides.
+| Launcher | Paper | What it runs |
+|---|---|---|
+| `reproduce_lm_only.sh` | Sections 5.1–5.2 (Figure 3, Table 1); Base and LM-only rows of Table 2 | LM-only training at lambda=0.5 and lambda=0 for 200, 800, 1,600 and 2,400 steps, each with the alignment evaluation and, from 800 steps on, the downstream suite; both evaluations of the base model |
+| `reproduce_rest.sh` | Section 6 (Table 2); Appendices C–F (Tables 3, 4 and 8) | Component ablation (projector only, LM + projector), loss-weight sweep at 200 steps, LoRA ranks 4/16/128, two more seeds of the 800-step pair, parameter drift |
+| `sweep_lambda.sh` | Appendix C, Loss-Weight Sensitivity (Table 3) | Loss-weight sweep at 200 steps, lambda 0 to 5 (0.5 is the paper's operating point) |
+| `sweep_lr_length.sh` | Section 5.1 (two of the training lengths in Figure 3); the lr 5e-6 runs are not reported in the paper | lambda=0.5 at 800 and 1,600 steps, at learning rates 2e-5 and 5e-6 |
+| `sweep_lora.sh` | Appendix F, LoRA Rank Sweep (Table 8) | LoRA ranks 4/16/128 vs. full fine-tuning |
+| `run_mse.sh` | Not reported in the paper | MSE (`alignment`) variant of the loss |
+| `sweep_models.sh` | Not reported in the paper | LLaVA-1.5-13B, Qwen2.5-VL-7B, Gemma-3-4B, each with a lambda=0 control |
+
+`reproduce_lm_only.sh` and `reproduce_rest.sh` together submit the training runs behind Figure 3 and Tables 1–4 and 8; the `sweep_*.sh` launchers are the earlier per-axis sweeps. The component ablation uses `arr_train.sh` with the `lm_only`, `proj_only` and `lm_proj` freeze overrides.
+
+Three more launchers in the same directory are re-run helpers: `reproduce_fixcrop.sh` retrains the lambda=0.5 runs after the mask-cropping fix, reuses existing lambda=0 checkpoints and adds the counting analysis; `rerun_corrected.sh` runs the same experiments in stages (pilot, lambda sweep, full sweep, seeds, per-sample evaluation logs); `downstream_evals_after_hf_login.sh` resubmits downstream evaluations that need a Hugging Face token. Where `rerun_corrected.sh` and `scripts/python/make_report.py` say "paper values", they mean the original submission, whose numbers predate the collator fixes and differ from the camera-ready.
 
 Two evaluation jobs follow each training run:
 
 - **`arr_align_eval.sh`** — intrinsic attention metrics (AMR, AP, NSS) on a held-out split of COCONut-PanCap (the last 10k samples, deterministically excluded from training).
 - **`arr_eval.sh`** — downstream benchmarks via [lmms-eval](https://github.com/EvolvingLMMs-Lab/lmms-eval) on vLLM: CountBench, CV-Bench 2D/3D, MMStar, MMVP, SalBench O3, POPE, and VLMs-are-Biased.
 
+Two further jobs run single analyses: `arr_counting.sh` (counting correlation, Section 5.3 and Appendix D; needs the question file from the separate `cat_bench` repository, see `CAT_BENCH_DATA`) and `arr_drift.sh` (parameter drift, Appendix E).
+
 Note that saliency extraction requires **eager attention** (`attn_implementation="eager"`); SDPA and FlashAttention do not expose per-head attention weights, which would silently collapse the alignment loss to zero. `finetune/model.py` enforces this.
+
+### Attention read-out position
+
+For a grounded caption token at position *t*, the loss and the localization metrics read the attention of decoder position *t* itself, where the token is the input. This is the setting of the paper's main experiments (Section 3.2).
+
+Appendix G repeats the experiments at the preceding position *t − 1*, whose hidden state predicts the token. That variant is not a config option. To reproduce it, change the slice that pairs tokens with attention rows in both files below, and the constant the unit tests check them against:
+
+| File | Main experiments (current code) | Appendix G |
+|---|---|---|
+| `finetune/criterion/base.py` | `attn = attn[-gen_len:]` | `attn = attn[-gen_len - 1 : -1]` |
+| `align_eval/metrics.py` | `attn = attn[-seg_ids.shape[0] :]` | `attn = attn[-seg_ids.shape[0] - 1 : -1]` |
+| `tests/test_criterion_alignment.py` | `QUERY_SHIFT = 0` | `QUERY_SHIFT = 1` |
+
+Train and evaluate with the same setting. The one-batch diagnostic `scripts/python/check_alignment.py` copies the criterion's slice and should be changed with it. The launchers are the same for both settings; at *t − 1* they produce Tables 9–11 instead of the main-text results. The counting analysis (`align_eval/counting.py`, Section 5.3) does not depend on this choice: it always reads the position that predicts the count, since the answer is not part of the input.
+
+Commit `6ab8909` ("fix: token alignment") had moved the code to *t − 1*. The current code uses the pairing from before that commit and keeps the commit's other changes (token–segment alignment by character offsets, masks cropped to the image processor's center crop), which the main experiments also use.
 
 ## Analysis Tooling
 
 - **`scripts/python/aggregate_results.py`** — collects alignment and lmms-eval results across runs into a single `summary.csv` (the source of the paper's tables).
 - **`scripts/python/compare_drift.py`** — parameter-drift analysis between checkpoints: component-, layer-, and head-level deltas, plus Jaccard overlap of the most-changed attention heads across seeds/lengths.
-- **`scripts/python/viz.py`** — qualitative saliency maps via [vl-saliency](https://pypi.org/project/vl-saliency/) for prompts in a CSV; compare checkpoints with `--models base=llava-hf/llava-1.5-7b-hf aligned=models/<run_id>`.
+- **`scripts/python/viz.py`** — qualitative saliency maps via [vl-saliency](https://pypi.org/project/vl-saliency/) for prompts in a CSV; compare checkpoints with `--models base=llava-hf/llava-1.5-7b-hf aligned=models/<run_id>`. Maps are drawn on the center crop of the image that the model sees.
+- **`scripts/python/make_saliency_grid.py`** — assembles the qualitative saliency grid (Figure 2) from the maps and the `manifest.csv` that `viz.py` writes. The prompt sets are `scripts/python/prompts_appendix.csv` (COCO val2017 images) and `prompts_appendix_commons.csv` (an alternative set).
+- **`scripts/python/plot_metrics_over_time.py`** — AMR, AP and NSS against training steps for the aligned runs and the lambda=0 controls (Figure 3), from `summary.csv`.
+- **`scripts/python/seed_table.py`** — mean and standard deviation over seeds for the 800-step aligned/control pair (run-to-run variation, Appendix D), from `summary.csv`.
+- **`scripts/python/paired_tests.py`** — paired McNemar tests between aligned and control runs on POPE and CountBench, from per-sample lmms-eval logs.
+- **`scripts/python/make_report.py`** — Markdown report that sets a re-run next to the numbers of the original submission.
 
 ## LoRA Fine-tuning
 
