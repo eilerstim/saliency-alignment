@@ -54,11 +54,13 @@ class Criterion(ABC):
             seg_ids = segment_ids[b][gen_ids]  # (gen_len, max_segments)
 
             # Saliency rows are per query position and the supervised tokens are
-            # the trailing ones. The token at position p is predicted by the
-            # query at p - 1, so shift back by one row (dropping the last row,
-            # which predicts past the sequence).
+            # the trailing ones, so the last gen_len rows are the tokens' own
+            # positions: each token is paired with the row of the query at
+            # which it is the input (the paper's main experiments). To read
+            # the preceding position p - 1 instead, the one that predicts the
+            # token (Appendix G), use attn[-gen_len - 1 : -1]; see the README.
             gen_len = seg_ids.shape[0]
-            attn = attn[-gen_len - 1 : -1]
+            attn = attn[-gen_len:]
 
             # Filter tokens with segments only
             has_segments = (seg_ids != -1).any(dim=1)

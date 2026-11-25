@@ -104,8 +104,9 @@ def per_image_scores(
         seg_ids = segment_ids[b][labels[b] != -100]
         if seg_ids.shape[0] == 0:
             continue
-        # Row of the query that predicts each token (position p - 1)
-        attn = attn[-seg_ids.shape[0] - 1 : -1]
+        # Row of each token's own position, as in the criterion (Appendix G
+        # reads the predicting position p - 1: attn[-seg_ids.shape[0] - 1 : -1])
+        attn = attn[-seg_ids.shape[0] :]
 
         has_segments = (seg_ids != -1).any(dim=1)
         if not has_segments.any():

@@ -1,13 +1,22 @@
-"""Regression tests for next-token alignment of the attention-supervision loss.
+"""Regression tests for the token <-> saliency-row pairing of the alignment loss.
 
-A causal decoder predicts the token at position ``p`` from the hidden state at
-``p - 1``. The saliency row at query position ``q`` is built from that query's
-attention, so the supervision for target token ``p`` must use the row of query
-``p - 1``, not the row of ``p`` itself (which has already consumed the token).
+The saliency row at query position ``q`` is built from that query's attention.
+The criterion and the alignment metrics pair every supervised target token at
+position ``p`` with the row of query ``p - QUERY_SHIFT``:
+
+* ``QUERY_SHIFT = 0``: the target's own position, whose query has the token as
+  input. This is the read-out of the paper's main experiments.
+* ``QUERY_SHIFT = 1``: the preceding position, whose hidden state predicts the
+  token and has not seen it yet (a causal decoder predicts the token at ``p``
+  from the state at ``p - 1``). This is the read-out of the paper's Appendix G.
+
+``QUERY_SHIFT`` below states which of the two the code implements; it has to
+match the slices in ``finetune/criterion/base.py`` and
+``align_eval/metrics.py`` (see "Attention read-out position" in the README).
 
 Each saliency row puts a sharp peak on a patch that encodes its query
-position, and each target's segment mask covers exactly the patch of its
-predictive query. Correct alignment therefore gives a near-zero KL; an
+position, and each target's segment mask covers exactly the patch of the
+query it is paired with. The right pairing therefore gives a near-zero KL; an
 off-by-one pairing puts the peak outside the mask.
 """
 
@@ -20,6 +29,10 @@ from finetune.criterion.kl import SaliencyAlignment as KLAlignment
 from vl_saliency._core.seq_layout import SequenceLayout
 from vl_saliency.config import SaliencyConfig, StaticPatchLayout
 from vl_saliency.maps import SaliencyGrid
+
+# Rows back from a target's own position that are read for it: 0 in the
+# paper's main experiments, 1 at the predicting position (Appendix G).
+QUERY_SHIFT = 0
 
 PAD, BOS, EOS, IMG = 0, 1, 2, 3
 HEADER = [4, 5]  # assistant header tokens between the image and the caption
@@ -121,11 +134,11 @@ class RecordingCriterion(Criterion):
 
 
 @pytest.mark.parametrize("padding_side", ["right", "left"])
-def test_targets_pair_with_predictive_query(padding_side):
+def test_targets_pair_with_supervised_query(padding_side):
     """Every target, including the first caption token and the final EOS, is
-    paired with the row of the query immediately before it."""
+    paired with the row of the query ``QUERY_SHIFT`` positions before it."""
     # Item 0: caption "a brown bear" (+EOS) and item 1 shorter, so padding is used.
-    # Each target's segment covers the patch of its predictive query (p - 1).
+    # Each target's segment covers the patch of the query it is paired with.
     lens = [3, 2]
     labels, segment_ids, preds, saliency, masks, starts = build_batch(
         lens,
@@ -135,7 +148,9 @@ def test_targets_pair_with_predictive_query(padding_side):
     supervised = []
     for b, n in enumerate(lens):
         # offsets 0 (first caption token), n - 1 ("bear"), n (EOS, final target)
-        supervised.append({o: [starts[b] + o - 1] for o in (0, n - 1, n)})
+        supervised.append(
+            {o: [starts[b] + o - QUERY_SHIFT] for o in (0, n - 1, n)}
+        )
     labels, segment_ids, preds, saliency, masks, _ = build_batch(
         lens, supervised, padding_side=padding_side
     )
@@ -150,44 +165,47 @@ def test_targets_pair_with_predictive_query(padding_side):
             assert peak in target
 
 
-def test_post_token_row_is_not_supervised():
-    """The row of the target's own position (post-token state) must not be
-    the one supervised for that target."""
+def test_neighbouring_row_is_not_supervised():
+    """The row one position away (the predicting position when the target's
+    own row is read, and vice versa) must not be the one supervised."""
     lens = [3]
     _, _, _, _, _, starts = build_batch(lens, supervised=[{}])
     bear = starts[0] + 2
+    supervised_query = bear - QUERY_SHIFT
+    other_query = bear - (1 - QUERY_SHIFT)
     labels, segment_ids, preds, saliency, masks, _ = build_batch(
-        lens, supervised=[{2: [bear]}]
+        lens, supervised=[{2: [other_query]}]
     )
 
     criterion = RecordingCriterion()
     criterion(labels, segment_ids, preds, saliency, masks)
 
     ((peaks, targets),) = criterion.calls
-    assert peaks == [patch_of(bear - 1)]
-    assert patch_of(bear) in targets[0]
+    assert peaks == [patch_of(supervised_query)]
+    assert patch_of(other_query) in targets[0]
     assert peaks[0] not in targets[0]
 
 
 def test_kl_loss_near_zero_when_aligned():
-    """End-to-end KL: masks matched to the predictive rows give ~0 loss."""
+    """End-to-end KL: masks matched to the supervised rows give ~0 loss."""
     lens = [4]
     _, _, _, _, _, starts = build_batch(lens, supervised=[{}])
     s = starts[0]
-    supervised = [{o: [s + o - 1] for o in (0, 2, 4)}]
+    supervised = [{o: [s + o - QUERY_SHIFT] for o in (0, 2, 4)}]
     labels, segment_ids, preds, saliency, masks, _ = build_batch(lens, supervised)
 
     loss = KLAlignment(weight=1.0)(labels, segment_ids, preds, saliency, masks)
     assert loss.item() == pytest.approx(0.0, abs=1e-3)
 
 
-def test_multi_token_word_subwords_use_their_own_predictive_rows():
+def test_multi_token_word_subwords_use_their_own_rows():
     """Subwords of one annotated word share segments, but each is supervised
-    through the query just before it (first subword: the preceding word)."""
+    through its own row (the one ``QUERY_SHIFT`` positions before it)."""
     lens = [4]
     _, _, _, _, _, starts = build_batch(lens, supervised=[{}])
     s = starts[0]
-    word = [s + 0, s + 1]  # offsets 1 and 2 form one two-token word
+    # offsets 1 and 2 form one two-token word
+    word = [s + 1 - QUERY_SHIFT, s + 2 - QUERY_SHIFT]
     labels, segment_ids, preds, saliency, masks, _ = build_batch(
         lens, supervised=[{1: word, 2: word}]
     )
@@ -196,7 +214,7 @@ def test_multi_token_word_subwords_use_their_own_predictive_rows():
     criterion(labels, segment_ids, preds, saliency, masks)
 
     ((peaks, targets),) = criterion.calls
-    assert peaks == [patch_of(s + 0), patch_of(s + 1)]
+    assert peaks == [patch_of(word[0]), patch_of(word[1])]
     assert targets[0] == targets[1] == {patch_of(q) for q in word}
 
 
@@ -206,8 +224,9 @@ def test_unsupervised_and_padding_ignored():
     labels, segment_ids, preds, saliency, masks, starts = build_batch(
         lens, supervised=[{}, {}]
     )
+    query = starts[0] + 1 - QUERY_SHIFT
     labels, segment_ids, preds, saliency, masks, _ = build_batch(
-        lens, supervised=[{1: [starts[0]]}, {}]
+        lens, supervised=[{1: [query]}, {}]
     )
 
     criterion = RecordingCriterion()
@@ -215,30 +234,32 @@ def test_unsupervised_and_padding_ignored():
 
     assert len(criterion.calls) == 1
     ((peaks, targets),) = criterion.calls
-    assert peaks == [patch_of(starts[0])]
+    assert peaks == [patch_of(query)]
     assert peaks[0] in targets[0]
 
 
 def test_eval_metrics_use_same_alignment():
-    """align_eval mirrors the criterion: a predictive-aligned peak scores
+    """align_eval mirrors the criterion: a peak on the supervised row scores
     the maximum chance-normalised AMR (N_PATCHES), not ~0."""
     from align_eval.metrics import per_image_scores
 
     lens = [3]
     _, _, _, _, _, starts = build_batch(lens, supervised=[{}])
     s = starts[0]
-    supervised = [{o: [s + o - 1] for o in range(lens[0] + 1)}]
+    supervised = [{o: [s + o - QUERY_SHIFT] for o in range(lens[0] + 1)}]
     labels, segment_ids, _, saliency, masks, _ = build_batch(lens, supervised)
 
     scores = per_image_scores(saliency, masks, segment_ids, labels)
     assert scores[0, 0].item() == pytest.approx(N_PATCHES, rel=1e-3)
 
 
-def test_supervised_row_does_not_see_target_token():
-    """End-to-end through a tiny LLaVA under the real Saliency hook: changing
-    the "bear" token must not change the row the criterion supervises for it
-    (that row belongs to the query after "brown"), guarding against a
-    double shift if vl_saliency ever realigns rows itself."""
+def test_supervised_row_belongs_to_the_expected_query():
+    """End-to-end through a tiny LLaVA under the real Saliency hook: the row
+    the criterion supervises for "bear" is the one of the query
+    ``QUERY_SHIFT`` positions before it. Causal attention makes that
+    observable: a query's row changes with its own input token and is
+    unaffected by any later token. This also guards against a double shift if
+    vl_saliency ever realigns rows itself."""
     from transformers import (
         CLIPVisionConfig,
         LlamaConfig,
@@ -301,16 +322,17 @@ def test_supervised_row_does_not_see_target_token():
         criterion(labels, segment_ids, out.logits, out.saliency, masks)
         return criterion.attn
 
-    perturbed = input_ids.clone()
-    perturbed[0, bear_pos] = 30
-    torch.testing.assert_close(supervised_rows(input_ids), supervised_rows(perturbed))
+    query_pos = bear_pos - QUERY_SHIFT
 
-    # Sanity: the token does reach the following row, so the test can fail.
-    perturbed_brown = input_ids.clone()
-    perturbed_brown[0, bear_pos - 1] = 30
-    assert not torch.allclose(
-        supervised_rows(input_ids), supervised_rows(perturbed_brown)
-    )
+    # The token after the supervised query cannot reach its row.
+    later = input_ids.clone()
+    later[0, query_pos + 1] = 30
+    torch.testing.assert_close(supervised_rows(input_ids), supervised_rows(later))
+
+    # The query's own input token does, so the check above can fail.
+    own = input_ids.clone()
+    own[0, query_pos] = 30
+    assert not torch.allclose(supervised_rows(input_ids), supervised_rows(own))
 
 
 class RecordingAttn(Criterion):
@@ -326,7 +348,7 @@ def test_token_with_empty_mask_is_dropped():
     _, _, _, _, _, starts = build_batch(lens, supervised=[{}])
     s = starts[0]
     labels, segment_ids, preds, saliency, masks, _ = build_batch(
-        lens, supervised=[{0: [s - 1], 2: [s + 1]}]
+        lens, supervised=[{0: [s - QUERY_SHIFT], 2: [s + 2 - QUERY_SHIFT]}]
     )
     # Point offset 2 at a segment that does not exist in the mask
     segment_ids[0, s + 2, 0] = N_PATCHES + 99
