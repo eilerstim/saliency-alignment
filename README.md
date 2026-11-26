@@ -4,8 +4,8 @@ This repository fine-tunes Vision-Language Models (VLMs) with a **Saliency Align
 
 The headline findings the code reproduces:
 
-1. **Attention localization is directly supervisable.** Training LLaVA-1.5-7B with the alignment loss raises the chance-normalized Attention Mass Ratio (AMR) from 1.52 for the base model to 15.2 after 800 steps and 17.8 after 2,400 steps (roughly 12x), with a monotone dose–response in training length. Held-out cross-entropy improves with training for both the aligned model and the lambda=0 control; the control stays slightly better at matched training length (1.179 vs. 1.208 at 800 steps).
-2. **Localization gains do not transfer downstream.** Across a suite of grounding-sensitive benchmarks (counting, spatial reasoning, hallucination), aligned models show no consistent downstream gains over a matched lambda=0 control. Paired comparisons at 800 steps find no statistically significant differences in accuracy; the only significant difference is a lower bias rate on VLMs-are-Biased, which also appears in a wrong-target control.
+1. **Attention localization is directly supervisable.** Training LLaVA-1.5-7B with the alignment loss raises the chance-normalized Attention Mass Ratio (AMR) from 1.52 for the base model to 15.2 after 800 steps and 17.8 after 2,400 steps (roughly 12x), with a monotone dose–response in training length.
+2. **Localization gains do not transfer downstream.** Across a suite of grounding-sensitive benchmarks (counting, spatial reasoning, hallucination), aligned models show no consistent downstream gains over a matched lambda=0 control.
 3. **The change is compactly encoded.** It is carried by the language model rather than the projector, concentrated in a stable set of attention heads, and reachable through rank-4 LoRA adapters.
 
 ## Installation
@@ -86,11 +86,8 @@ Section, figure, table and appendix numbers below refer to the camera-ready vers
 | `sweep_lr_length.sh` | Section 5.1 (two of the training lengths in Figure 3); the lr 5e-6 runs are not reported in the paper | lambda=0.5 at 800 and 1,600 steps, at learning rates 2e-5 and 5e-6 |
 | `sweep_lora.sh` | Appendix F, LoRA Rank Sweep (Table 8) | LoRA ranks 4/16/128 vs. full fine-tuning |
 | `run_mse.sh` | Not reported in the paper | MSE (`alignment`) variant of the loss |
-| `sweep_models.sh` | Not reported in the paper | LLaVA-1.5-13B, Qwen2.5-VL-7B, Gemma-3-4B, each with a lambda=0 control |
 
 `reproduce_lm_only.sh` and `reproduce_rest.sh` together submit the training runs behind Figure 3 and Tables 1–4 and 8; the `sweep_*.sh` launchers are the earlier per-axis sweeps. The component ablation uses `arr_train.sh` with the `lm_only`, `proj_only` and `lm_proj` freeze overrides.
-
-Three more launchers in the same directory are re-run helpers: `reproduce_fixcrop.sh` retrains the lambda=0.5 runs after the mask-cropping fix, reuses existing lambda=0 checkpoints and adds the counting analysis; `rerun_corrected.sh` runs the same experiments in stages (pilot, lambda sweep, full sweep, seeds, per-sample evaluation logs); `downstream_evals_after_hf_login.sh` resubmits downstream evaluations that need a Hugging Face token. Where `rerun_corrected.sh` and `scripts/python/make_report.py` say "paper values", they mean the original submission, whose numbers predate the collator fixes and differ from the camera-ready.
 
 Two evaluation jobs follow each training run:
 
@@ -114,8 +111,6 @@ Appendix G repeats the experiments at the preceding position *t − 1*, whose hi
 | `tests/test_criterion_alignment.py` | `QUERY_SHIFT = 0` | `QUERY_SHIFT = 1` |
 
 Train and evaluate with the same setting. Run IDs do not encode the read-out position, and `arr_train.sh` skips a run whose checkpoint already exists, so give the second setting its own `RUN_TAG` (honoured by `reproduce_lm_only.sh` and `reproduce_rest.sh`) or a fresh `PROJECT_DIR`; otherwise checkpoints trained at the other position are reused. The one-batch diagnostic `scripts/python/check_alignment.py` copies the criterion's slice and should be changed with it. The launchers are the same for both settings; at *t − 1* they produce Tables 9–11 instead of the main-text results. The counting analysis (`align_eval/counting.py`, Section 5.3) does not depend on this choice: it always reads the position that predicts the count, since the answer is not part of the input.
-
-Commit `6ab8909` ("fix: token alignment") had moved the code to *t − 1*. The current code uses the pairing from before that commit and keeps the commit's other changes (token–segment alignment by character offsets, masks cropped to the image processor's center crop), which the main experiments also use.
 
 ## Analysis Tooling
 
